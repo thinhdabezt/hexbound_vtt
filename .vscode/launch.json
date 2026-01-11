@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Hexbound Client (CanvasKit)",
+            "request": "launch",
+            "type": "dart",
+            "program": "hexbound_client/lib/main.dart",
+            "args": [
+                "-d",
+                "chrome",
+                "--web-renderer",
+                "canvaskit",
+                "--web-port",
+                "3000"
+            ]
+        },
+        {
+            "name": "Hexbound Client (HTML)",
+            "request": "launch",
+            "type": "dart",
+            "program": "hexbound_client/lib/main.dart",
+            "args": [
+                "-d",
+                "chrome",
+                "--web-renderer",
+                "html"
+            ]
+        }
+    ]
+}
