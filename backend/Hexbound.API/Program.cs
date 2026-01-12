@@ -26,6 +26,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Background Services
 builder.Services.AddHostedService<DataIngestionWorker>();
+builder.Services.AddSingleton<DiceService>();
 
 builder.Services.AddAuthentication(options =>
 {
@@ -73,5 +74,20 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<GameHub>("/gameHub"); // Map SignalR Hub
+
+// Verify DiceService (Quick Test)
+using (var scope = app.Services.CreateScope())
+{
+    var diceService = scope.ServiceProvider.GetRequiredService<DiceService>();
+    try 
+    {
+        var result = diceService.Roll("2d6+5");
+        Console.WriteLine($"✅ Dice Test (2d6+5): {result}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ Dice Test Failed: {ex.Message}");
+    }
+}
 
 app.Run();
