@@ -1,4 +1,7 @@
+using Hexbound.API.Data;
 using Hexbound.API.Hubs;
+using Hexbound.API.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -17,6 +20,12 @@ builder.Services.AddSignalR()
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["SecretKey"] ?? "default_secret_key_if_config_missing_must_be_long_enough";
 var key = Encoding.ASCII.GetBytes(secretKey);
+// Database
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Background Services
+builder.Services.AddHostedService<DataIngestionWorker>();
 
 builder.Services.AddAuthentication(options =>
 {
