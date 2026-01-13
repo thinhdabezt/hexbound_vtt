@@ -218,3 +218,6 @@ app.*.map.json
 /android/app/release
 backend/Hexbound.API/appsettings.Development.json
 backend/docker-compose.yml
+
+# Hex Engine Test
+hex_engine_test/
