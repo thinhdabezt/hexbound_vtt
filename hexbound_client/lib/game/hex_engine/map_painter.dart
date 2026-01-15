@@ -9,85 +9,95 @@ class HexMapPainter extends CustomPainter {
   final int radius;
   final ui.Image tileset;
   final Hex? selectedHex;
+  final List<Hex>? path;
 
-  HexMapPainter(this.layout, this.radius, this.tileset, [this.selectedHex]);
+  HexMapPainter(this.layout, this.radius, this.tileset, [this.selectedHex, this.path]);
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Same batch rendering code...
     // 1. Prepare Batches
     final List<RSTransform> transforms = [];
     final List<Rect> rects = [];
     
-    // Calculate sprite dimensions and scale once
-    // Target Hex Size: width = sqrt(3) * size, height = 2 * size
+    // ... (rest of batch setup logic: scaleX, scaleY, etc. same as before)
     final double hexWidth = layout.size.width * sqrt(3);
     final double hexHeight = layout.size.height * 2;
-    
-    // Scale factor to fit the sprite into the hex
-    // Sprite is tileset.width x tileset.height
     final double scaleX = hexWidth / tileset.width;
-    final double scaleY = hexHeight / tileset.height;
-    
-    // Use the Full Image as the source (Single Tile Tileset for now)
+    final double scaleY = hexHeight / tileset.height; // Logic from previous step
     final Rect srcRect = Rect.fromLTWH(0, 0, tileset.width.toDouble(), tileset.height.toDouble());
-    // Anchor point for rotation/scaling is the center of the sprite
     final double anchorX = tileset.width / 2.0;
     final double anchorY = tileset.height / 2.0;
 
-    // 2. Debug Tools
+    for (int q = -radius; q <= radius; q++) {
+      for (int r = -radius; r <= radius; r++) {
+         Hex h = Hex(q, r, -q - r);
+         Offset center = layout.hexToPixel(h);
+
+         transforms.add(RSTransform.fromComponents(
+          rotation: 0, 
+          scale: scaleX, 
+          anchorX: anchorX, 
+          anchorY: anchorY, 
+          translateX: center.dx, 
+          translateY: center.dy
+        ));
+        rects.add(srcRect);
+      }
+    }
+    
+    final Paint paint = Paint();
+    canvas.drawAtlas(tileset, transforms, rects, null, null, null, paint);
+
+
+    // Draw Path Highlight
+    if (path != null && path!.isNotEmpty) {
+      final Paint pathPaint = Paint()
+        ..color = Colors.blue.withOpacity(0.4)
+        ..style = PaintingStyle.fill;
+      
+      final Paint pathOutline = Paint()
+        ..color = Colors.blueAccent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+
+      for (var h in path!) {
+        _drawHexPoly(canvas, h, pathPaint);
+        _drawHexPoly(canvas, h, pathOutline);
+      }
+    }
+
+    // Draw Selection Highlight (Start Point)
+    if (selectedHex != null) {
+      final Paint highlightPaint = Paint()
+        ..color = Colors.green.withOpacity(0.6)
+        ..style = PaintingStyle.fill;
+      
+      _drawHexPoly(canvas, selectedHex!, highlightPaint);
+      
+      final Paint highlightOutline = Paint()
+        ..color = Colors.green
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0;
+      _drawHexPoly(canvas, selectedHex!, highlightOutline);
+    }
+    
+    // Debug layer...
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
     final outlinePaint = Paint()
       ..color = Colors.grey
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    // 3. Build Batch
     for (int q = -radius; q <= radius; q++) {
       for (int r = -radius; r <= radius; r++) {
         Hex h = Hex(q, r, -q - r);
-        Offset center = layout.hexToPixel(h);
-
-        transforms.add(RSTransform.fromComponents(
-          rotation: 0,
-          scale: scaleX, 
-          anchorX: anchorX,
-          anchorY: anchorY,
-          translateX: center.dx,
-          translateY: center.dy,
-        ));
-        
-        rects.add(srcRect);
-      }
-    }
-
-    // 4. Draw Batch
-    final Paint paint = Paint();
-    canvas.drawAtlas(tileset, transforms, rects, null, null, null, paint);
-
-    // 5. Draw Selection Highlight
-    if (selectedHex != null) {
-      final Paint highlightPaint = Paint()
-        ..color = Colors.yellow.withOpacity(0.5)
-        ..style = PaintingStyle.fill;
-      
-      _drawHexPoly(canvas, selectedHex!, highlightPaint);
-      
-      // Also draw a bold outline for selection
-      final Paint highlightOutline = Paint()
-        ..color = Colors.yellow
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0;
-      _drawHexPoly(canvas, selectedHex!, highlightOutline);
-    }
-
-    // 6. Draw Overlays (Debug)
-    for (int q = -radius; q <= radius; q++) {
-      for (int r = -radius; r <= radius; r++) {
-         Hex h = Hex(q, r, -q - r);
         _drawDebugOverlay(canvas, h, outlinePaint, textPainter);
       }
     }
   }
+// ... rest of class
+
 
   void _drawHexPoly(Canvas canvas, Hex h, Paint paint) {
     Path path = Path();
