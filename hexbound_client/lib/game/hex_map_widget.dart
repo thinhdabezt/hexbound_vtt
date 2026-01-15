@@ -16,6 +16,8 @@ class HexMapWidget extends StatefulWidget {
 class _HexMapWidgetState extends State<HexMapWidget> {
   ui.Image? _tilesetImage;
   bool _isLoading = true;
+  final TransformationController _transformationController = TransformationController();
+  Hex? _selectedHex;
 
   @override
   void initState() {
@@ -40,6 +42,23 @@ class _HexMapWidgetState extends State<HexMapWidget> {
     }
   }
 
+  void _handleTap(TapUpDetails details, Layout layout) {
+    // Current assumption: GestureDetector is CHILD of InteractiveViewer -> CustomPaint
+    // So localPosition is in world coordinates (unscaled).
+    Offset local = details.localPosition;
+    Hex clickedHex = layout.pixelToHex(local).round();
+    
+    setState(() {
+      _selectedHex = clickedHex;
+    });
+
+    debugPrint("Clicked: $clickedHex at ${local.dx}, ${local.dy}");
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Selected: $_selectedHex"), duration: const Duration(milliseconds: 200)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -59,29 +78,19 @@ class _HexMapWidgetState extends State<HexMapWidget> {
 
     return Scaffold(
       body: InteractiveViewer(
+        transformationController: _transformationController,
         boundaryMargin: const EdgeInsets.all(500.0), // Allow scrolling far
         minScale: 0.1,
         maxScale: 4.0,
         constrained: false, // Infinite Canvas
         child: SizedBox(
-          width: 2000, // Arbitrary large size for testing
+          width: 2000, 
           height: 2000,
-          child: CustomPaint(
-            painter: HexMapPainter(layout, 10, _tilesetImage!), // Radius 10 grid
-            child: GestureDetector(
-              onTapUp: (details) {
-                // Handle Click
-                // Note: InteractiveViewer transforms touches. 
-                // We need more complex logic for correct world coords if scaled/panned.
-                // For now, let's assume simple tap on the painter surface.
-                Offset local = details.localPosition;
-                var h = layout.pixelToHex(local).round();
-                print("Clicked: $h");
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Clicked: $h"), duration: Duration(milliseconds: 500)),
-                );
-              },
-            ),
+          child: GestureDetector(
+              onTapUp: (details) => _handleTap(details, layout),
+              child: CustomPaint(
+                painter: HexMapPainter(layout, 10, _tilesetImage!, _selectedHex), // Pass selected hex
+              ),
           ),
         ),
       ),

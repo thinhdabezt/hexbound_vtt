@@ -8,8 +8,9 @@ class HexMapPainter extends CustomPainter {
   final Layout layout;
   final int radius;
   final ui.Image tileset;
+  final Hex? selectedHex;
 
-  HexMapPainter(this.layout, this.radius, this.tileset);
+  HexMapPainter(this.layout, this.radius, this.tileset, [this.selectedHex]);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -46,20 +47,9 @@ class HexMapPainter extends CustomPainter {
         Hex h = Hex(q, r, -q - r);
         Offset center = layout.hexToPixel(h);
 
-        // Add to batch
-        // RSTransform.fromComponents:
-        //   rotation: 0 (no rotation)
-        //   scale: we assume uniform scale or use transform matrix logic directly if non-uniform?
-        //   RSTransform only supports one scale value (uniform). 
-        //   If our hex is non-square but image is square, we might need non-uniform scaling which drawAtlas RSTransform doesn't support well directly?
-        //   Wait, RSTransform(scos, ssin, tx, ty). It implies simpler transforms. 
-        //   Actually scos = scale * cos(rot). 
-        //   If we need non-uniform scaling (stretch), drawAtlas might be limited or we need to pre-transform.
-        //   For now, assume uniform scale based on Width (or Height) to fill. Let's use scale based on Width.
-        
         transforms.add(RSTransform.fromComponents(
           rotation: 0,
-          scale: scaleX, // Assuming uniform scale effectively for now
+          scale: scaleX, 
           anchorX: anchorX,
           anchorY: anchorY,
           translateX: center.dx,
@@ -70,17 +60,44 @@ class HexMapPainter extends CustomPainter {
       }
     }
 
-    // 4. Draw Batch (One Draw Call!)
+    // 4. Draw Batch
     final Paint paint = Paint();
     canvas.drawAtlas(tileset, transforms, rects, null, null, null, paint);
 
-    // 5. Draw Overlays (Debug) - These are still individual calls, acceptable for debug
+    // 5. Draw Selection Highlight
+    if (selectedHex != null) {
+      final Paint highlightPaint = Paint()
+        ..color = Colors.yellow.withOpacity(0.5)
+        ..style = PaintingStyle.fill;
+      
+      _drawHexPoly(canvas, selectedHex!, highlightPaint);
+      
+      // Also draw a bold outline for selection
+      final Paint highlightOutline = Paint()
+        ..color = Colors.yellow
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0;
+      _drawHexPoly(canvas, selectedHex!, highlightOutline);
+    }
+
+    // 6. Draw Overlays (Debug)
     for (int q = -radius; q <= radius; q++) {
       for (int r = -radius; r <= radius; r++) {
          Hex h = Hex(q, r, -q - r);
         _drawDebugOverlay(canvas, h, outlinePaint, textPainter);
       }
     }
+  }
+
+  void _drawHexPoly(Canvas canvas, Hex h, Paint paint) {
+    Path path = Path();
+    List<Offset> corners = _polygonCorners(layout, h);
+    path.moveTo(corners[0].dx, corners[0].dy);
+    for (int i = 1; i < 6; i++) {
+        path.lineTo(corners[i].dx, corners[i].dy);
+    }
+    path.close();
+    canvas.drawPath(path, paint);
   }
 
   void _drawDebugOverlay(Canvas canvas, Hex h, Paint outlinePaint, TextPainter textPainter) {
