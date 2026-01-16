@@ -4,6 +4,7 @@ using Hexbound.API.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,8 +26,17 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Background Services
+// Background Services
 builder.Services.AddHostedService<DataIngestionWorker>();
 builder.Services.AddSingleton<DiceService>();
+
+// Redis
+builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
+{
+    var configuration = ConfigurationOptions.Parse(builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379");
+    return ConnectionMultiplexer.Connect(configuration);
+});
+builder.Services.AddSingleton<GameStateService>();
 
 builder.Services.AddAuthentication(options =>
 {

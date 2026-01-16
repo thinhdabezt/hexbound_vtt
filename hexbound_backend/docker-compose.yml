@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: hexbound_postgres
+    environment:
+      POSTGRES_USER: hexmaster
+      POSTGRES_PASSWORD: Start12345
+      POSTGRES_DB: HexboundVTT
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: hexbound_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
