@@ -216,6 +216,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+hexbound_client/build
 backend/Hexbound.API/appsettings.Development.json
 backend/docker-compose.yml
 

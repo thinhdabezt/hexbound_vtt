@@ -10,11 +10,13 @@ class HexMapPainter extends CustomPainter {
   final ui.Image tileset;
   final Hex? selectedHex;
   final List<Hex>? path;
+  final Map<String, Hex>? tokens;
 
-  HexMapPainter(this.layout, this.radius, this.tileset, [this.selectedHex, this.path]);
+  HexMapPainter(this.layout, this.radius, this.tileset, [this.selectedHex, this.path, this.tokens]);
 
   @override
   void paint(Canvas canvas, Size size) {
+    // ... (Existing Batch Rendering for Map)
     // Same batch rendering code...
     // 1. Prepare Batches
     final List<RSTransform> transforms = [];
@@ -88,7 +90,32 @@ class HexMapPainter extends CustomPainter {
       ..color = Colors.grey
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
+    // Draw Tokens
+    if (tokens != null) {
+      final Paint tokenPaint = Paint()
+        ..color = Colors.cyan
+        ..style = PaintingStyle.fill;
+        
+      final Paint tokenOutline = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
 
+      tokens!.forEach((id, hex) {
+        Offset center = layout.hexToPixel(hex);
+        // Draw Token as Circle
+        canvas.drawCircle(center, layout.size.width * 0.8, tokenPaint);
+        canvas.drawCircle(center, layout.size.width * 0.8, tokenOutline);
+
+        // Draw Token ID (Optional Debug)
+        // final textSpan = TextSpan(text: id.substring(0, 3), style: const TextStyle(color: Colors.black, fontSize: 10));
+        // final tp = TextPainter(text: textSpan, textDirection: TextDirection.ltr);
+        // tp.layout();
+        // tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+      });
+    }
+
+    // Draw Overlays (Debug)
     for (int q = -radius; q <= radius; q++) {
       for (int r = -radius; r <= radius; r++) {
         Hex h = Hex(q, r, -q - r);

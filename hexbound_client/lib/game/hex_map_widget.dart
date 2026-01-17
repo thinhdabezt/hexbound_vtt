@@ -3,6 +3,7 @@ import 'hex_engine/hex.dart';
 import 'hex_engine/layout.dart';
 import 'hex_engine/map_painter.dart';
 import 'hex_engine/pathfinding.dart';
+import 'package:signalr_netcore/signalr_client.dart';
 
 import 'dart:ui' as ui;
 import 'package:flutter/services.dart';
@@ -25,10 +26,61 @@ class _HexMapWidgetState extends State<HexMapWidget> {
   List<Hex> _currentPath = [];
   final Set<Hex> _obstacles = {}; 
 
+  // SignalR & Game State
+  late HubConnection _hubConnection;
+  Map<String, Hex> _tokens = {};
+  String? _myTokenId; // For now simulation, we can use a random ID or just "Token_1"
+
   @override
   void initState() {
     super.initState();
     _loadTileset();
+    _initSignalR();
+  }
+  
+  Future<void> _initSignalR() async {
+    const serverUrl = "http://localhost:5292/gameHub"; // Adjust port as needed from backend
+    _hubConnection = HubConnectionBuilder().withUrl(serverUrl).build();
+
+    _hubConnection.onclose(({error}) => debugPrint("SignalR Closed: $error"));
+
+    // Listeners
+    _hubConnection.on("GameStateSync", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final data = arguments[0] as Map<dynamic, dynamic>;
+        setState(() {
+          _tokens = data.map((key, value) {
+             // value is { q: 1, r: 2 } (from Backend DTO)
+             final pos = value as Map<dynamic, dynamic>;
+             return MapEntry(key.toString(), Hex(pos['q'] as int, pos['r'] as int, - (pos['q'] as int) - (pos['r'] as int)));
+          });
+        });
+        debugPrint("GameState Synced: ${_tokens.length} tokens");
+      }
+    });
+
+    _hubConnection.on("TokenMoved", (arguments) {
+       if (arguments != null && arguments.length >= 3) {
+         final tokenId = arguments[0] as String;
+         final q = arguments[1] as int;
+         final r = arguments[2] as int;
+         
+         setState(() {
+           _tokens[tokenId] = Hex.axial(q, r);
+         });
+         debugPrint("Token Moved: $tokenId -> ($q, $r)");
+       }
+    });
+
+    try {
+      await _hubConnection.start();
+      debugPrint("SignalR Connected");
+      
+      // Simulate Login/Join (Temporary)
+      _myTokenId = "Player_${DateTime.now().millisecondsSinceEpoch % 1000}";
+    } catch (e) {
+      debugPrint("SignalR Connection Error: $e");
+    }
   }
 
   Future<void> _loadTileset() async {
@@ -52,40 +104,32 @@ class _HexMapWidgetState extends State<HexMapWidget> {
     Offset local = details.localPosition;
     Hex clickedHex = layout.pixelToHex(local).round();
     
+    // Logic: If no Pathfinding Start/End set, just move my token?
+    // Let's mix valid movement with pathfinding for demo
+    
     setState(() {
       if (_startHex == null) {
         _startHex = clickedHex;
-        _endHex = null;
-        _currentPath = [];
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Start Point Set: $_startHex"), duration: const Duration(milliseconds: 500)),
-        );
-      } else if (_startHex != null && _endHex == null) {
-        _endHex = clickedHex;
-        // Calculate Path
-        final stopwatch = Stopwatch()..start();
-        _currentPath = Pathfinding.findPath(_startHex!, _endHex!, _obstacles);
-        stopwatch.stop();
-        
-        debugPrint("Path found in ${stopwatch.elapsedMilliseconds}ms. Length: ${_currentPath.length}");
-         ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Path calculated! Length: ${_currentPath.length}"), duration: const Duration(milliseconds: 1000)),
-        );
+         // Send Move Command
+         if (_hubConnection.state == HubConnectionState.Connected && _myTokenId != null) {
+           _hubConnection.invoke("MoveToken", args: [_myTokenId!, clickedHex.q, clickedHex.r]);
+         }
       } else {
-        // Reset if both set
-        _startHex = clickedHex;
-        _endHex = null;
-        _currentPath = [];
-         ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Reset. New Start Point: $_startHex"), duration: const Duration(milliseconds: 500)),
-        );
+        // ... (Existing Pathfinding Logic)
+        if (_endHex == null) {
+             _endHex = clickedHex;
+            _currentPath = Pathfinding.findPath(_startHex!, _endHex!, _obstacles);
+        } else {
+            _startHex = clickedHex;
+            _endHex = null;
+            _currentPath = [];
+             // Move Token here too on reset
+             if (_hubConnection.state == HubConnectionState.Connected && _myTokenId != null) {
+               _hubConnection.invoke("MoveToken", args: [_myTokenId!, clickedHex.q, clickedHex.r]);
+             }
+        }
       }
     });
-
-    debugPrint("Clicked: $clickedHex at ${local.dx}, ${local.dy}");
   }
 
   @override
@@ -107,10 +151,10 @@ class _HexMapWidgetState extends State<HexMapWidget> {
     return Scaffold(
       body: InteractiveViewer(
         transformationController: _transformationController,
-        boundaryMargin: const EdgeInsets.all(500.0), // Allow scrolling far
+        boundaryMargin: const EdgeInsets.all(500.0),
         minScale: 0.1,
         maxScale: 4.0,
-        constrained: false, // Infinite Canvas
+        constrained: false, 
         child: SizedBox(
           width: 2000, 
           height: 2000,
@@ -122,7 +166,8 @@ class _HexMapWidgetState extends State<HexMapWidget> {
                   10, 
                   _tilesetImage!, 
                   _startHex, 
-                  _currentPath
+                  _currentPath,
+                  _tokens // Pass tokens to painter
                 ), 
               ),
           ),
