@@ -37,6 +37,7 @@ builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(sp =>
     return ConnectionMultiplexer.Connect(configuration);
 });
 builder.Services.AddSingleton<GameStateService>();
+builder.Services.AddSingleton<CombatService>();
 
 builder.Services.AddAuthentication(options =>
 {

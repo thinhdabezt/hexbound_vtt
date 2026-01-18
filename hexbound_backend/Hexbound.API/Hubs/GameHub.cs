@@ -7,11 +7,13 @@ public class GameHub : Hub
 {
     private readonly DiceService _diceService;
     private readonly GameStateService _gameStateService;
+    private readonly CombatService _combatService;
 
-    public GameHub(DiceService diceService, GameStateService gameStateService)
+    public GameHub(DiceService diceService, GameStateService gameStateService, CombatService combatService)
     {
         _diceService = diceService;
         _gameStateService = gameStateService;
+        _combatService = combatService;
     }
 
     public override async Task OnConnectedAsync()
@@ -43,6 +45,43 @@ public class GameHub : Hub
         
         // 2. Broadcast to all (including caller, to confirm)
         await Clients.All.SendAsync("TokenMoved", tokenId, q, r);
+    }
+
+    // --- Combat API ---
+
+    public async Task StartCombat(List<string> participantIds)
+    {
+        var state = _combatService.StartCombat(participantIds);
+        await _gameStateService.SaveCombatState(state);
+        await Clients.All.SendAsync("CombatStarted", state); // Client should show combat UI
+    }
+
+    public async Task EndTurn()
+    {
+        var state = await _gameStateService.GetCombatState();
+        if (state == null || !state.IsActive) return;
+
+        _combatService.NextTurn(state);
+        await _gameStateService.SaveCombatState(state);
+        await Clients.All.SendAsync("TurnChanged", state); // Client updates CurrentActor highlight
+    }
+
+    public async Task Attack(string targetId, int attackRoll)
+    {
+        // Ideally we fetch Target Stat from DB/Redis. 
+        // For Proof of Concept, let's assume AC 15 for everyone.
+        int targetAc = 15; 
+        
+        bool isHit = _combatService.ResolveAttack(attackRoll, targetAc);
+        
+        string log = isHit ? $"Attack Hit! (Roll {attackRoll} vs AC {targetAc})" : $"Attack Missed. (Roll {attackRoll} vs AC {targetAc})";
+        
+        await Clients.All.SendAsync("CombatLog", log);
+        
+        if (isHit) {
+             // For now static damage
+             await Clients.All.SendAsync("CombatLog", $"{targetId} takes 5 damage!");
+        }
     }
 
     public async Task RollDice(string user, string formula)

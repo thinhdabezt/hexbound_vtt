@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Hexbound.API.Models;
 using StackExchange.Redis;
 
 namespace Hexbound.API.Services;
@@ -6,6 +8,7 @@ public class GameStateService
 {
     private readonly IConnectionMultiplexer _redis;
     private const string TokenKey = "Hexbound:GameState:Tokens";
+    private const string CombatKey = "Hexbound:GameState:Combat";
 
     public GameStateService(IConnectionMultiplexer redis)
     {
@@ -15,7 +18,6 @@ public class GameStateService
     public async Task UpdateTokenPosition(string tokenId, int q, int r)
     {
         var db = _redis.GetDatabase();
-        // Store simple "q,r" string
         await db.HashSetAsync(TokenKey, tokenId, $"{q},{r}");
     }
 
@@ -36,5 +38,22 @@ public class GameStateService
         }
 
         return state;
+    }
+
+    public async Task SaveCombatState(CombatState state)
+    {
+        var db = _redis.GetDatabase();
+        var json = JsonSerializer.Serialize(state);
+        await db.StringSetAsync(CombatKey, json);
+    }
+
+    public async Task<CombatState?> GetCombatState()
+    {
+        var db = _redis.GetDatabase();
+        var json = await db.StringGetAsync(CombatKey);
+        
+        if (json.IsNullOrEmpty) return null;
+        
+        return JsonSerializer.Deserialize<CombatState>(json.ToString());
     }
 }
