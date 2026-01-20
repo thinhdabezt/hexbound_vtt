@@ -3,16 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:hexbound_client/game/hex_engine/hex.dart';
 import 'package:hexbound_client/game/hex_engine/layout.dart';
 
-/// Dynamic Layer - Tokens, Path Highlight, Selection
-/// Repaints only when these elements change
+/// Dynamic Layer with Viewport Culling
+/// Tokens, Path Highlight, Selection - only renders visible elements
 class DynamicPainter extends CustomPainter {
   final Layout layout;
+  final Rect visibleRect;
   final Hex? selectedHex;
   final List<Hex>? path;
   final Map<String, Hex>? tokens;
 
   DynamicPainter({
     required this.layout,
+    required this.visibleRect,
     this.selectedHex,
     this.path,
     this.tokens,
@@ -20,7 +22,9 @@ class DynamicPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw Path Highlight
+    final expandedRect = visibleRect.inflate(50); // Small margin
+
+    // Draw Path Highlight (filter to visible)
     if (path != null && path!.isNotEmpty) {
       final Paint pathPaint = Paint()
         ..color = Colors.blue.withOpacity(0.4)
@@ -32,41 +36,67 @@ class DynamicPainter extends CustomPainter {
         ..strokeWidth = 2.0;
 
       for (var h in path!) {
+        final center = layout.hexToPixel(h);
+        if (!expandedRect.contains(center)) continue; // Cull
+        
         _drawHexPoly(canvas, h, pathPaint);
         _drawHexPoly(canvas, h, pathOutline);
       }
     }
 
-    // Draw Selection Highlight (Start Point)
+    // Draw Selection Highlight (check visibility)
     if (selectedHex != null) {
-      final Paint highlightPaint = Paint()
-        ..color = Colors.green.withOpacity(0.6)
-        ..style = PaintingStyle.fill;
-      
-      _drawHexPoly(canvas, selectedHex!, highlightPaint);
-      
-      final Paint highlightOutline = Paint()
-        ..color = Colors.green
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0;
-      _drawHexPoly(canvas, selectedHex!, highlightOutline);
+      final center = layout.hexToPixel(selectedHex!);
+      if (expandedRect.contains(center)) {
+        final Paint highlightPaint = Paint()
+          ..color = Colors.green.withOpacity(0.6)
+          ..style = PaintingStyle.fill;
+        
+        _drawHexPoly(canvas, selectedHex!, highlightPaint);
+        
+        final Paint highlightOutline = Paint()
+          ..color = Colors.green
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.0;
+        _drawHexPoly(canvas, selectedHex!, highlightOutline);
+      }
     }
 
-    // Draw Tokens
+    // Draw Tokens as Flag icons (filter to visible)
     if (tokens != null) {
-      final Paint tokenPaint = Paint()
-        ..color = Colors.cyan
-        ..style = PaintingStyle.fill;
-        
-      final Paint tokenOutline = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
-
       tokens!.forEach((id, hex) {
         Offset center = layout.hexToPixel(hex);
-        canvas.drawCircle(center, layout.size.width * 0.8, tokenPaint);
-        canvas.drawCircle(center, layout.size.width * 0.8, tokenOutline);
+        if (!expandedRect.contains(center)) return; // Cull
+        
+        // Draw flag pole
+        final polePaint = Paint()
+          ..color = Colors.brown[700]!
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.0;
+        
+        final poleStart = center + Offset(0, layout.size.height * 0.3);
+        final poleEnd = center - Offset(0, layout.size.height * 0.6);
+        canvas.drawLine(poleStart, poleEnd, polePaint);
+        
+        // Draw flag triangle
+        final flagPaint = Paint()
+          ..color = Colors.red
+          ..style = PaintingStyle.fill;
+        
+        final flagPath = Path()
+          ..moveTo(poleEnd.dx, poleEnd.dy)
+          ..lineTo(poleEnd.dx + layout.size.width * 0.6, poleEnd.dy + layout.size.height * 0.25)
+          ..lineTo(poleEnd.dx, poleEnd.dy + layout.size.height * 0.5)
+          ..close();
+        
+        canvas.drawPath(flagPath, flagPaint);
+        
+        // Flag border
+        final flagBorder = Paint()
+          ..color = Colors.red[900]!
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        canvas.drawPath(flagPath, flagBorder);
       });
     }
   }
@@ -100,7 +130,8 @@ class DynamicPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(DynamicPainter oldDelegate) {
-    return selectedHex != oldDelegate.selectedHex 
+    return visibleRect != oldDelegate.visibleRect
+        || selectedHex != oldDelegate.selectedHex 
         || path != oldDelegate.path 
         || tokens != oldDelegate.tokens;
   }

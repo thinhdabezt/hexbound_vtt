@@ -4,39 +4,56 @@ import 'package:hexbound_client/game/hex_engine/hex.dart';
 import 'package:hexbound_client/game/hex_engine/layout.dart';
 import 'package:hexbound_client/game/models/hex_map_data.dart';
 import 'package:hexbound_client/game/models/terrain_type.dart';
+import 'package:hexbound_client/game/utils/viewport_utils.dart';
 
-/// Static Terrain Layer - draws hex tiles with terrain colors and icons
-/// This painter should NEVER repaint after initial render
+/// Static Terrain Layer with Viewport Culling
+/// Only renders hexes within the visible viewport
 class TerrainPainter extends CustomPainter {
   final Layout layout;
   final HexMapData mapData;
+  final Rect visibleRect;
 
-  TerrainPainter(this.layout, this.mapData);
+  TerrainPainter(this.layout, this.mapData, this.visibleRect);
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final coord in mapData.allCoordinates) {
-      final hex = Hex(coord.q, coord.r, -coord.q - coord.r);
-      final terrain = mapData.getTerrain(coord.q, coord.r);
+    // Calculate visible hex range from viewport
+    final range = ViewportUtils.getVisibleHexRange(layout, visibleRect);
+    
+    int hexesDrawn = 0;
+    
+    for (int r = range.rMin; r <= range.rMax; r++) {
+      for (int q = range.qMin; q <= range.qMax; q++) {
+        // Skip if outside map bounds
+        if (!mapData.isInBounds(q, r)) continue;
+        
+        final hex = Hex(q, r, -q - r);
+        final terrain = mapData.getTerrain(q, r);
 
-      // Draw filled hex
-      final fillPaint = Paint()
-        ..color = terrain.color
-        ..style = PaintingStyle.fill;
-      _drawHexPoly(canvas, hex, fillPaint);
+        // Draw filled hex
+        final fillPaint = Paint()
+          ..color = terrain.color
+          ..style = PaintingStyle.fill;
+        _drawHexPoly(canvas, hex, fillPaint);
 
-      // Draw border
-      final borderPaint = Paint()
-        ..color = terrain.borderColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5;
-      _drawHexPoly(canvas, hex, borderPaint);
+        // Draw border
+        final borderPaint = Paint()
+          ..color = terrain.borderColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5;
+        _drawHexPoly(canvas, hex, borderPaint);
 
-      // Draw icon overlay (if terrain has one)
-      if (terrain.icon != null) {
-        _drawTerrainIcon(canvas, hex, terrain);
+        // Draw icon overlay (if terrain has one)
+        if (terrain.icon != null) {
+          _drawTerrainIcon(canvas, hex, terrain);
+        }
+        
+        hexesDrawn++;
       }
     }
+    
+    // Debug: uncomment to see culling stats
+    // debugPrint("Viewport Culling: Drew $hexesDrawn/${mapData.totalHexes} hexes");
   }
 
   void _drawHexPoly(Canvas canvas, Hex h, Paint paint) {
@@ -90,5 +107,8 @@ class TerrainPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(TerrainPainter oldDelegate) => false; // NEVER repaint
+  bool shouldRepaint(TerrainPainter old) {
+    // Repaint when visible area changes
+    return visibleRect != old.visibleRect;
+  }
 }
