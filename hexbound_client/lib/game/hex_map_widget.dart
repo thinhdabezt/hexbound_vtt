@@ -3,6 +3,8 @@ import 'hex_engine/hex.dart';
 import 'hex_engine/layout.dart';
 import 'hex_engine/map_painter.dart';
 import 'hex_engine/pathfinding.dart';
+import 'hex_engine/fog_painter.dart';
+import 'ui/combat_overlay.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 
 import 'dart:ui' as ui;
@@ -29,7 +31,13 @@ class _HexMapWidgetState extends State<HexMapWidget> {
   // SignalR & Game State
   late HubConnection _hubConnection;
   Map<String, Hex> _tokens = {};
-  String? _myTokenId; // For now simulation, we can use a random ID or just "Token_1"
+  String? _myTokenId;
+
+  // Combat State
+  List<String> _combatLog = [];
+  List<String> _turnOrder = [];
+  int _currentTurnIndex = 0;
+  bool _isCombatActive = false;
 
   @override
   void initState() {
@@ -39,18 +47,17 @@ class _HexMapWidgetState extends State<HexMapWidget> {
   }
   
   Future<void> _initSignalR() async {
-    const serverUrl = "http://localhost:5292/gameHub"; // Adjust port as needed from backend
+    const serverUrl = "http://localhost:5292/gameHub";
     _hubConnection = HubConnectionBuilder().withUrl(serverUrl).build();
 
     _hubConnection.onclose(({error}) => debugPrint("SignalR Closed: $error"));
 
-    // Listeners
+    // Game State Listeners
     _hubConnection.on("GameStateSync", (arguments) {
       if (arguments != null && arguments.isNotEmpty) {
         final data = arguments[0] as Map<dynamic, dynamic>;
         setState(() {
           _tokens = data.map((key, value) {
-             // value is { q: 1, r: 2 } (from Backend DTO)
              final pos = value as Map<dynamic, dynamic>;
              return MapEntry(key.toString(), Hex(pos['q'] as int, pos['r'] as int, - (pos['q'] as int) - (pos['r'] as int)));
           });
@@ -72,11 +79,43 @@ class _HexMapWidgetState extends State<HexMapWidget> {
        }
     });
 
+    // Combat Listeners
+    _hubConnection.on("CombatStarted", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final state = arguments[0] as Map<dynamic, dynamic>;
+        setState(() {
+          _turnOrder = (state['TurnOrder'] as List<dynamic>).cast<String>();
+          _currentTurnIndex = state['CurrentTurnIndex'] as int;
+          _isCombatActive = state['IsActive'] as bool;
+          _combatLog = ["Combat Started! Round 1"];
+        });
+        debugPrint("Combat Started: ${_turnOrder.length} participants");
+      }
+    });
+
+    _hubConnection.on("TurnChanged", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final state = arguments[0] as Map<dynamic, dynamic>;
+        setState(() {
+          _currentTurnIndex = state['CurrentTurnIndex'] as int;
+          final round = state['RoundNumber'] as int;
+          _combatLog.add("Round $round - ${_turnOrder[_currentTurnIndex]}'s turn");
+        });
+      }
+    });
+
+    _hubConnection.on("CombatLog", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final message = arguments[0] as String;
+        setState(() {
+          _combatLog.add(message);
+        });
+      }
+    });
+
     try {
       await _hubConnection.start();
       debugPrint("SignalR Connected");
-      
-      // Simulate Login/Join (Temporary)
       _myTokenId = "Player_${DateTime.now().millisecondsSinceEpoch % 1000}";
     } catch (e) {
       debugPrint("SignalR Connection Error: $e");
@@ -104,18 +143,13 @@ class _HexMapWidgetState extends State<HexMapWidget> {
     Offset local = details.localPosition;
     Hex clickedHex = layout.pixelToHex(local).round();
     
-    // Logic: If no Pathfinding Start/End set, just move my token?
-    // Let's mix valid movement with pathfinding for demo
-    
     setState(() {
       if (_startHex == null) {
         _startHex = clickedHex;
-         // Send Move Command
          if (_hubConnection.state == HubConnectionState.Connected && _myTokenId != null) {
            _hubConnection.invoke("MoveToken", args: [_myTokenId!, clickedHex.q, clickedHex.r]);
          }
       } else {
-        // ... (Existing Pathfinding Logic)
         if (_endHex == null) {
              _endHex = clickedHex;
             _currentPath = Pathfinding.findPath(_startHex!, _endHex!, _obstacles);
@@ -123,7 +157,6 @@ class _HexMapWidgetState extends State<HexMapWidget> {
             _startHex = clickedHex;
             _endHex = null;
             _currentPath = [];
-             // Move Token here too on reset
              if (_hubConnection.state == HubConnectionState.Connected && _myTokenId != null) {
                _hubConnection.invoke("MoveToken", args: [_myTokenId!, clickedHex.q, clickedHex.r]);
              }
@@ -149,29 +182,54 @@ class _HexMapWidgetState extends State<HexMapWidget> {
     );
 
     return Scaffold(
-      body: InteractiveViewer(
-        transformationController: _transformationController,
-        boundaryMargin: const EdgeInsets.all(500.0),
-        minScale: 0.1,
-        maxScale: 4.0,
-        constrained: false, 
-        child: SizedBox(
-          width: 2000, 
-          height: 2000,
-          child: GestureDetector(
-              onTapUp: (details) => _handleTap(details, layout),
-              child: CustomPaint(
-                painter: HexMapPainter(
-                  layout, 
-                  10, 
-                  _tilesetImage!, 
-                  _startHex, 
-                  _currentPath,
-                  _tokens // Pass tokens to painter
-                ), 
+      body: Stack(
+        children: [
+          // Map Layer
+          InteractiveViewer(
+            transformationController: _transformationController,
+            boundaryMargin: const EdgeInsets.all(500.0),
+            minScale: 0.1,
+            maxScale: 4.0,
+            constrained: false, 
+            child: SizedBox(
+              width: 2000, 
+              height: 2000,
+              child: GestureDetector(
+                  onTapUp: (details) => _handleTap(details, layout),
+                  child: CustomPaint(
+                    painter: HexMapPainter(
+                      layout, 
+                      10, 
+                      _tilesetImage!, 
+                      _startHex, 
+                      _currentPath,
+                      _tokens
+                    ), 
+                  ),
               ),
+            ),
           ),
-        ),
+
+          // Fog of War Layer
+          IgnorePointer(
+            child: CustomPaint(
+              size: const Size(2000, 2000),
+              painter: FogOfWarPainter(
+                layout: layout,
+                tokens: _tokens,
+                visionRange: 4,
+              ),
+            ),
+          ),
+
+          // Combat UI Overlay
+          CombatOverlay(
+            combatLog: _combatLog,
+            turnOrder: _turnOrder,
+            currentTurnIndex: _currentTurnIndex,
+            isActive: _isCombatActive,
+          ),
+        ],
       ),
     );
   }
