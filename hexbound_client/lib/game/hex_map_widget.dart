@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'hex_engine/hex.dart';
 import 'hex_engine/layout.dart';
-import 'hex_engine/map_painter.dart';
 import 'hex_engine/pathfinding.dart';
 import 'hex_engine/fog_painter.dart';
+import 'painters/terrain_painter.dart';
+import 'painters/dynamic_painter.dart';
+import 'painters/debug_overlay_painter.dart';
 import 'ui/combat_overlay.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 
@@ -38,6 +40,10 @@ class _HexMapWidgetState extends State<HexMapWidget> {
   List<String> _turnOrder = [];
   int _currentTurnIndex = 0;
   bool _isCombatActive = false;
+
+  // Debug State (O1 Optimization)
+  bool _showDebugGrid = false;
+  bool _showDebugCoords = false;
 
   @override
   void initState() {
@@ -184,7 +190,7 @@ class _HexMapWidgetState extends State<HexMapWidget> {
     return Scaffold(
       body: Stack(
         children: [
-          // Map Layer
+          // Map with InteractiveViewer
           InteractiveViewer(
             transformationController: _transformationController,
             boundaryMargin: const EdgeInsets.all(500.0),
@@ -195,17 +201,47 @@ class _HexMapWidgetState extends State<HexMapWidget> {
               width: 2000, 
               height: 2000,
               child: GestureDetector(
-                  onTapUp: (details) => _handleTap(details, layout),
-                  child: CustomPaint(
-                    painter: HexMapPainter(
-                      layout, 
-                      10, 
-                      _tilesetImage!, 
-                      _startHex, 
-                      _currentPath,
-                      _tokens
-                    ), 
-                  ),
+                onTapUp: (details) => _handleTap(details, layout),
+                child: Stack(
+                  children: [
+                    // Layer 1: Static Terrain (NEVER repaints)
+                    RepaintBoundary(
+                      child: CustomPaint(
+                        size: const Size(2000, 2000),
+                        painter: TerrainPainter(layout, 10, _tilesetImage!),
+                        isComplex: true,
+                        willChange: false,
+                      ),
+                    ),
+                    
+                    // Layer 2: Dynamic Content (repaints on interaction)
+                    RepaintBoundary(
+                      child: CustomPaint(
+                        size: const Size(2000, 2000),
+                        painter: DynamicPainter(
+                          layout: layout,
+                          selectedHex: _startHex,
+                          path: _currentPath,
+                          tokens: _tokens,
+                        ),
+                      ),
+                    ),
+                    
+                    // Layer 3: Debug Overlay (toggle-able, OFF by default)
+                    if (_showDebugGrid || _showDebugCoords)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          size: const Size(2000, 2000),
+                          painter: DebugOverlayPainter(
+                            layout: layout,
+                            radius: 10,
+                            showGrid: _showDebugGrid,
+                            showCoordinates: _showDebugCoords,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -228,6 +264,30 @@ class _HexMapWidgetState extends State<HexMapWidget> {
             turnOrder: _turnOrder,
             currentTurnIndex: _currentTurnIndex,
             isActive: _isCombatActive,
+          ),
+
+          // Debug Toggle FAB (Bottom Left)
+          Positioned(
+            bottom: 16,
+            left: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: "debug_coords",
+                  backgroundColor: _showDebugCoords ? Colors.amber : Colors.grey[800],
+                  onPressed: () => setState(() => _showDebugCoords = !_showDebugCoords),
+                  child: const Text("Q,R", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.small(
+                  heroTag: "debug_grid",
+                  backgroundColor: _showDebugGrid ? Colors.amber : Colors.grey[800],
+                  onPressed: () => setState(() => _showDebugGrid = !_showDebugGrid),
+                  child: Icon(_showDebugGrid ? Icons.grid_off : Icons.grid_on, size: 20),
+                ),
+              ],
+            ),
           ),
         ],
       ),
