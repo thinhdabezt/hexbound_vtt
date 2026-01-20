@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math';
 import 'hex_engine/hex.dart';
 import 'hex_engine/layout.dart';
 import 'hex_engine/pathfinding.dart';
@@ -6,11 +7,9 @@ import 'hex_engine/fog_painter.dart';
 import 'painters/terrain_painter.dart';
 import 'painters/dynamic_painter.dart';
 import 'painters/debug_overlay_painter.dart';
+import 'models/hex_map_data.dart';
 import 'ui/combat_overlay.dart';
 import 'package:signalr_netcore/signalr_client.dart';
-
-import 'dart:ui' as ui;
-import 'package:flutter/services.dart';
 
 class HexMapWidget extends StatefulWidget {
   const HexMapWidget({super.key});
@@ -20,9 +19,12 @@ class HexMapWidget extends StatefulWidget {
 }
 
 class _HexMapWidgetState extends State<HexMapWidget> {
-  ui.Image? _tilesetImage;
-  bool _isLoading = true;
   final TransformationController _transformationController = TransformationController();
+  
+  // Map Data (30x20 rectangular)
+  late HexMapData _mapData;
+  late Layout _layout;
+  late Size _canvasSize;
   
   // Interaction State
   Hex? _startHex;
@@ -41,14 +43,32 @@ class _HexMapWidgetState extends State<HexMapWidget> {
   int _currentTurnIndex = 0;
   bool _isCombatActive = false;
 
-  // Debug State (O1 Optimization)
+  // Debug State
   bool _showDebugGrid = false;
   bool _showDebugCoords = false;
 
   @override
   void initState() {
     super.initState();
-    _loadTileset();
+    
+    // Initialize map data (30x20 rectangular)
+    _mapData = HexMapData.generateRandom(30, 20, seed: 42);
+    
+    // Initialize layout
+    _layout = Layout(
+      HexOrientation.pointy,
+      const Size(32, 32),
+      const Offset(100, 100), // Origin offset to center map
+    );
+    
+    // Calculate canvas size based on map dimensions
+    final hexWidth = _layout.size.width * sqrt(3);
+    final hexHeight = _layout.size.height * 2;
+    _canvasSize = Size(
+      _mapData.width * hexWidth + hexWidth,
+      _mapData.height * hexHeight * 0.75 + hexHeight,
+    );
+    
     _initSignalR();
   }
   
@@ -128,26 +148,15 @@ class _HexMapWidgetState extends State<HexMapWidget> {
     }
   }
 
-  Future<void> _loadTileset() async {
-    try {
-      final ByteData data = await rootBundle.load('assets/tiles/hex_tile_texture.png');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final ui.Image image = await decodeImageFromList(bytes);
-      setState(() {
-        _tilesetImage = image;
-        _isLoading = false;
-      });
-    } catch (e) {
-      debugPrint("Error loading tileset: $e");
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _handleTap(TapUpDetails details, Layout layout) {
+  void _handleTap(TapUpDetails details) {
     Offset local = details.localPosition;
-    Hex clickedHex = layout.pixelToHex(local).round();
+    Hex clickedHex = _layout.pixelToHex(local).round();
+    
+    // Only process if within map bounds
+    if (!_mapData.isInBounds(clickedHex.q, clickedHex.r)) {
+      debugPrint("Click outside map bounds: $clickedHex");
+      return;
+    }
     
     setState(() {
       if (_startHex == null) {
@@ -173,42 +182,28 @@ class _HexMapWidgetState extends State<HexMapWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (_tilesetImage == null) {
-      return const Scaffold(body: Center(child: Text("Failed to load tileset")));
-    }
-
-    final layout = Layout(
-      HexOrientation.pointy,
-      Size(32, 32),
-      Offset.zero,
-    );
-
     return Scaffold(
       body: Stack(
         children: [
           // Map with InteractiveViewer
           InteractiveViewer(
             transformationController: _transformationController,
-            boundaryMargin: const EdgeInsets.all(500.0),
-            minScale: 0.1,
-            maxScale: 4.0,
+            boundaryMargin: const EdgeInsets.all(200.0),
+            minScale: 0.3,
+            maxScale: 3.0,
             constrained: false, 
             child: SizedBox(
-              width: 2000, 
-              height: 2000,
+              width: _canvasSize.width,
+              height: _canvasSize.height,
               child: GestureDetector(
-                onTapUp: (details) => _handleTap(details, layout),
+                onTapUp: _handleTap,
                 child: Stack(
                   children: [
                     // Layer 1: Static Terrain (NEVER repaints)
                     RepaintBoundary(
                       child: CustomPaint(
-                        size: const Size(2000, 2000),
-                        painter: TerrainPainter(layout, 10, _tilesetImage!),
+                        size: _canvasSize,
+                        painter: TerrainPainter(_layout, _mapData),
                         isComplex: true,
                         willChange: false,
                       ),
@@ -217,9 +212,9 @@ class _HexMapWidgetState extends State<HexMapWidget> {
                     // Layer 2: Dynamic Content (repaints on interaction)
                     RepaintBoundary(
                       child: CustomPaint(
-                        size: const Size(2000, 2000),
+                        size: _canvasSize,
                         painter: DynamicPainter(
-                          layout: layout,
+                          layout: _layout,
                           selectedHex: _startHex,
                           path: _currentPath,
                           tokens: _tokens,
@@ -231,10 +226,10 @@ class _HexMapWidgetState extends State<HexMapWidget> {
                     if (_showDebugGrid || _showDebugCoords)
                       RepaintBoundary(
                         child: CustomPaint(
-                          size: const Size(2000, 2000),
+                          size: _canvasSize,
                           painter: DebugOverlayPainter(
-                            layout: layout,
-                            radius: 10,
+                            layout: _layout,
+                            radius: 15, // Cover the rectangular area
                             showGrid: _showDebugGrid,
                             showCoordinates: _showDebugCoords,
                           ),
@@ -249,9 +244,9 @@ class _HexMapWidgetState extends State<HexMapWidget> {
           // Fog of War Layer
           IgnorePointer(
             child: CustomPaint(
-              size: const Size(2000, 2000),
+              size: _canvasSize,
               painter: FogOfWarPainter(
-                layout: layout,
+                layout: _layout,
                 tokens: _tokens,
                 visionRange: 4,
               ),
@@ -287,6 +282,23 @@ class _HexMapWidgetState extends State<HexMapWidget> {
                   child: Icon(_showDebugGrid ? Icons.grid_off : Icons.grid_on, size: 20),
                 ),
               ],
+            ),
+          ),
+          
+          // Map Info (Top Left)
+          Positioned(
+            top: 16,
+            left: 16,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                "Map: ${_mapData.width}x${_mapData.height} (${_mapData.totalHexes} hexes)",
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
             ),
           ),
         ],
