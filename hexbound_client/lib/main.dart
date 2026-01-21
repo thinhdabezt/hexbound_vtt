@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'game/hex_map_widget.dart'; // New Engine
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'game/hex_map_widget.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
@@ -16,8 +17,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: HexMapWidget(),
-      // home: const Scaffold(body: Center(child: Text("Test Build"))),
+      home: const HexMapWidget(),
     );
   }
 }
