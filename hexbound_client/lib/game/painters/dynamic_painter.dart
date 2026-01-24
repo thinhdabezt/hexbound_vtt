@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:hexbound_client/game/hex_engine/hex.dart';
 import 'package:hexbound_client/game/hex_engine/layout.dart';
+import 'package:hexbound_client/game/models/token_stats.dart';
 
 /// Dynamic Layer with Viewport Culling
 /// Tokens, Path Highlight, Selection - only renders visible elements
@@ -11,6 +12,7 @@ class DynamicPainter extends CustomPainter {
   final Hex? selectedHex;
   final List<Hex>? path;
   final Map<String, Hex>? tokens;
+  final Map<String, TokenStats>? tokenStats;
 
   DynamicPainter({
     required this.layout,
@@ -18,6 +20,7 @@ class DynamicPainter extends CustomPainter {
     this.selectedHex,
     this.path,
     this.tokens,
+    this.tokenStats,
   });
 
   @override
@@ -97,8 +100,48 @@ class DynamicPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
         canvas.drawPath(flagPath, flagBorder);
+        
+        // Draw HP bar if stats available
+        final stats = tokenStats?[id];
+        if (stats != null) {
+          _drawHpBar(canvas, center, stats.currentHp, stats.maxHp);
+        }
       });
     }
+  }
+  
+  void _drawHpBar(Canvas canvas, Offset tokenCenter, int current, int max) {
+    final barWidth = layout.size.width * 1.2;
+    final barHeight = 4.0;
+    final barTop = tokenCenter.dy + layout.size.height * 0.4;
+    
+    // Background (dark gray)
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(tokenCenter.dx - barWidth/2, barTop, barWidth, barHeight),
+        const Radius.circular(2),
+      ),
+      Paint()..color = Colors.grey[800]!,
+    );
+    
+    // HP fill (green → yellow → red based on %)
+    final ratio = max > 0 ? current.toDouble() / max.toDouble() : 0.0;
+    Color barColor;
+    if (ratio > 0.5) {
+      barColor = Colors.green;
+    } else if (ratio > 0.25) {
+      barColor = Colors.orange;
+    } else {
+      barColor = Colors.red;
+    }
+    
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(tokenCenter.dx - barWidth/2, barTop, barWidth * ratio, barHeight),
+        const Radius.circular(2),
+      ),
+      Paint()..color = barColor,
+    );
   }
 
   void _drawHexPoly(Canvas canvas, Hex h, Paint paint) {
@@ -133,6 +176,7 @@ class DynamicPainter extends CustomPainter {
     return visibleRect != oldDelegate.visibleRect
         || selectedHex != oldDelegate.selectedHex 
         || path != oldDelegate.path 
-        || tokens != oldDelegate.tokens;
+        || tokens != oldDelegate.tokens
+        || tokenStats != oldDelegate.tokenStats;
   }
 }

@@ -9,6 +9,7 @@ import 'painters/dynamic_painter.dart';
 import 'painters/debug_overlay_painter.dart';
 import 'painters/fog_hex_painter.dart';
 import 'providers/game_state_provider.dart';
+import 'models/token_stats.dart';
 import 'ui/combat_overlay.dart';
 
 class HexMapWidget extends ConsumerStatefulWidget {
@@ -66,7 +67,37 @@ class _HexMapWidgetState extends ConsumerState<HexMapWidget> {
     // Connect SignalR after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(signalRServiceProvider).connect("http://localhost:5292/gameHub");
+      
+      // Add test token with stats for HP bar testing
+      _createTestToken();
     });
+  }
+  
+  void _createTestToken() {
+    // Create test token at position (10, 10)
+    const testTokenId = "TestPlayer1";
+    ref.read(tokensProvider.notifier).updateToken(testTokenId, Hex.axial(10, 10));
+    
+    // Create stats with 70% HP for testing
+    final testStats = TokenStats(
+      tokenId: testTokenId,
+      name: "Hero",
+      maxHp: 20,
+      currentHp: 14, // 70% HP - should be green
+    );
+    ref.read(tokenStatsProvider.notifier).update(testStats);
+    
+    // Create second test token with low HP
+    const testTokenId2 = "TestPlayer2";
+    ref.read(tokensProvider.notifier).updateToken(testTokenId2, Hex.axial(12, 10));
+    
+    final testStats2 = TokenStats(
+      tokenId: testTokenId2,
+      name: "Wounded",
+      maxHp: 20,
+      currentHp: 4, // 20% HP - should be red
+    );
+    ref.read(tokenStatsProvider.notifier).update(testStats2);
   }
   
   @override
@@ -150,6 +181,7 @@ class _HexMapWidgetState extends ConsumerState<HexMapWidget> {
     // Watch providers
     final mapData = ref.watch(mapDataProvider);
     final tokens = ref.watch(tokensProvider);
+    final tokenStats = ref.watch(tokenStatsProvider);
     final selectedHex = ref.watch(selectedHexProvider);
     final currentPath = ref.watch(currentPathProvider);
     
@@ -191,6 +223,7 @@ class _HexMapWidgetState extends ConsumerState<HexMapWidget> {
                           selectedHex: selectedHex,
                           path: currentPath,
                           tokens: tokens,
+                          tokenStats: tokenStats,
                         ),
                       ),
                     ),

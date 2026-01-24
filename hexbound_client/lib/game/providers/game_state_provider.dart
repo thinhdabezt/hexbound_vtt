@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 import '../hex_engine/hex.dart';
 import '../models/hex_map_data.dart';
+import '../models/token_stats.dart';
 
 // ===== TOKEN PROVIDER =====
 final tokensProvider = StateNotifierProvider<TokensNotifier, Map<String, Hex>>((ref) {
@@ -25,6 +26,25 @@ class TokensNotifier extends StateNotifier<Map<String, Hex>> {
   }
 }
 
+// ===== TOKEN STATS PROVIDER =====
+final tokenStatsProvider = StateNotifierProvider<TokenStatsNotifier, Map<String, TokenStats>>((ref) {
+  return TokenStatsNotifier();
+});
+
+class TokenStatsNotifier extends StateNotifier<Map<String, TokenStats>> {
+  TokenStatsNotifier() : super({});
+  
+  void syncAll(List<TokenStats> statsList) {
+    state = {for (var s in statsList) s.tokenId: s};
+  }
+  
+  void update(TokenStats stats) {
+    state = {...state, stats.tokenId: stats};
+  }
+  
+  TokenStats? get(String tokenId) => state[tokenId];
+}
+
 // ===== MAP DATA PROVIDER =====
 final mapDataProvider = StateNotifierProvider<MapDataNotifier, HexMapData>((ref) {
   return MapDataNotifier();
@@ -32,13 +52,11 @@ final mapDataProvider = StateNotifierProvider<MapDataNotifier, HexMapData>((ref)
 
 class MapDataNotifier extends StateNotifier<HexMapData> {
   MapDataNotifier() : super(HexMapData.generateRandom(30, 20, seed: 42)) {
-    // Reveal random starting area
     state.revealRandomStart(radius: 1);
   }
   
   void revealArea(int q, int r, {int radius = 2}) {
     state.revealArea(q, r, radius: radius);
-    // Trigger rebuild by updating state reference
     state = state;
   }
 }
@@ -67,9 +85,7 @@ class SignalRService {
   Future<void> connect(String url) async {
     _connection = HubConnectionBuilder().withUrl(url).build();
     
-    _connection!.onclose(({error}) {
-      // Handle disconnection
-    });
+    _connection!.onclose(({error}) {});
 
     // Game State Sync
     _connection!.on("GameStateSync", (arguments) {
@@ -83,6 +99,26 @@ class SignalRService {
           );
         });
         ref.read(tokensProvider.notifier).setAll(tokens);
+      }
+    });
+
+    // Token Stats Sync
+    _connection!.on("TokenStatsSync", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final rawList = arguments[0] as List<dynamic>;
+        final list = rawList
+            .map((e) => TokenStats.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+        ref.read(tokenStatsProvider.notifier).syncAll(list);
+      }
+    });
+
+    // Token Stats Updated
+    _connection!.on("TokenStatsUpdated", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final rawData = arguments[0] as Map;
+        final stats = TokenStats.fromJson(Map<String, dynamic>.from(rawData));
+        ref.read(tokenStatsProvider.notifier).update(stats);
       }
     });
 
@@ -119,7 +155,20 @@ class SignalRService {
     if (_connection?.state == HubConnectionState.Connected) {
       await _connection!.invoke("MoveToken", args: [tokenId, q, r]);
     }
-    // Update locally as well
     ref.read(tokensProvider.notifier).updateToken(tokenId, Hex.axial(q, r));
   }
+
+  Future<void> updateTokenStats(TokenStats stats) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("UpdateTokenStats", args: [stats.toJson()]);
+    }
+    ref.read(tokenStatsProvider.notifier).update(stats);
+  }
+
+  Future<void> dealDamage(String tokenId, int damage) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("DealDamage", args: [tokenId, damage]);
+    }
+  }
 }
+

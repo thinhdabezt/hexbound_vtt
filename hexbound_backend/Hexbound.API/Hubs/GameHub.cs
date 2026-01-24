@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Hexbound.API.Services;
+using Hexbound.API.Models;
 
 namespace Hexbound.API.Hubs;
 
@@ -27,8 +28,11 @@ public class GameHub : Hub
         // We'll verify serialization. Tuples might be tricky in pure JSON, but let's try.
         // Actually, let's map it to a simpler DTO to be safe.
         var dto = state.ToDictionary(k => k.Key, v => new { q = v.Value.q, r = v.Value.r });
-        
         await Clients.Caller.SendAsync("GameStateSync", dto);
+        
+        // Sync TokenStats
+        var allStats = await _gameStateService.GetAllTokenStats();
+        await Clients.Caller.SendAsync("TokenStatsSync", allStats);
         
         await base.OnConnectedAsync();
     }
@@ -45,6 +49,22 @@ public class GameHub : Hub
         
         // 2. Broadcast to all (including caller, to confirm)
         await Clients.All.SendAsync("TokenMoved", tokenId, q, r);
+    }
+
+    // --- Token Stats API ---
+    
+    public async Task UpdateTokenStats(TokenStats stats)
+    {
+        await _gameStateService.SaveTokenStats(stats);
+        await Clients.All.SendAsync("TokenStatsUpdated", stats);
+    }
+
+    public async Task DealDamage(string tokenId, int damage)
+    {
+        await _gameStateService.UpdateTokenHp(tokenId, damage);
+        var stats = await _gameStateService.GetTokenStats(tokenId);
+        await Clients.All.SendAsync("TokenStatsUpdated", stats);
+        await Clients.All.SendAsync("CombatLog", $"{stats?.Name ?? tokenId} takes {damage} damage!");
     }
 
     // --- Combat API ---

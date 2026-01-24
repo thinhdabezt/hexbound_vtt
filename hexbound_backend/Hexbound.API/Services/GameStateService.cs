@@ -56,4 +56,55 @@ public class GameStateService
         
         return JsonSerializer.Deserialize<CombatState>(json.ToString());
     }
+
+    // ===== TOKEN STATS =====
+    private const string TokenStatsPrefix = "Hexbound:TokenStats:";
+
+    public async Task SaveTokenStats(TokenStats stats)
+    {
+        var db = _redis.GetDatabase();
+        var key = TokenStatsPrefix + stats.TokenId;
+        var json = JsonSerializer.Serialize(stats);
+        await db.StringSetAsync(key, json);
+    }
+
+    public async Task<TokenStats?> GetTokenStats(string tokenId)
+    {
+        var db = _redis.GetDatabase();
+        var key = TokenStatsPrefix + tokenId;
+        var json = await db.StringGetAsync(key);
+        
+        if (json.IsNullOrEmpty) return null;
+        
+        return JsonSerializer.Deserialize<TokenStats>(json.ToString());
+    }
+
+    public async Task<List<TokenStats>> GetAllTokenStats()
+    {
+        var db = _redis.GetDatabase();
+        var server = _redis.GetServer(_redis.GetEndPoints().First());
+        var keys = server.Keys(pattern: TokenStatsPrefix + "*");
+        
+        var result = new List<TokenStats>();
+        foreach (var key in keys)
+        {
+            var json = await db.StringGetAsync(key);
+            if (!json.IsNullOrEmpty)
+            {
+                var stats = JsonSerializer.Deserialize<TokenStats>(json.ToString());
+                if (stats != null) result.Add(stats);
+            }
+        }
+        return result;
+    }
+
+    public async Task UpdateTokenHp(string tokenId, int damage)
+    {
+        var stats = await GetTokenStats(tokenId);
+        if (stats == null) return;
+        
+        stats.CurrentHp = Math.Max(0, stats.CurrentHp - damage);
+        await SaveTokenStats(stats);
+    }
 }
+
