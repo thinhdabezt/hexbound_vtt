@@ -4,12 +4,52 @@ namespace Hexbound.API.Services;
 
 public class CombatService
 {
-    private readonly Random _rng = new Random();
+    private readonly DiceService _diceService;
 
-    // 1. Initiative: Simple Shuffle for now (Later: D20 + Dex)
+    public CombatService(DiceService diceService)
+    {
+        _diceService = diceService;
+    }
+
+    /// <summary>
+    /// Start combat with real D20 + Initiative Modifier rolls
+    /// </summary>
+    public CombatState StartCombat(List<TokenStats> participants)
+    {
+        var initiativeRolls = new Dictionary<string, int>();
+        
+        foreach (var participant in participants)
+        {
+            // Roll 1d20 + Initiative Modifier
+            var roll = _diceService.Roll("1d20");
+            var initiative = roll.Total + participant.InitiativeModifier;
+            initiativeRolls[participant.TokenId] = initiative;
+        }
+        
+        // Sort by initiative (descending), then by modifier for tie-breaking
+        var sortedOrder = participants
+            .OrderByDescending(p => initiativeRolls[p.TokenId])
+            .ThenByDescending(p => p.InitiativeModifier)
+            .Select(p => p.TokenId)
+            .ToList();
+
+        return new CombatState
+        {
+            TurnOrder = sortedOrder,
+            InitiativeRolls = initiativeRolls,
+            CurrentTurnIndex = 0,
+            RoundNumber = 1,
+            IsActive = true
+        };
+    }
+
+    /// <summary>
+    /// Legacy overload for backward compatibility (random shuffle)
+    /// </summary>
     public CombatState StartCombat(List<string> participantIds)
     {
-        var order = participantIds.OrderBy(x => _rng.Next()).ToList();
+        var rng = new Random();
+        var order = participantIds.OrderBy(x => rng.Next()).ToList();
         return new CombatState
         {
             TurnOrder = order,
@@ -31,14 +71,13 @@ public class CombatService
         }
     }
 
-    // 2. Attack Logic
+    // Attack Logic
     public bool ResolveAttack(int attackRoll, int targetAc)
     {
-        // Nat 20 is auto hit (logic can be added here)
         return attackRoll >= targetAc;
     }
 
-    // 3. Damage Logic (Returns new HP)
+    // Damage Logic (Returns new HP)
     public int ApplyDamage(int currentHp, int damage)
     {
         return Math.Max(0, currentHp - damage);

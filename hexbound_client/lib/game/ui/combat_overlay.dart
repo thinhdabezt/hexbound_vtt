@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class CombatOverlay extends StatelessWidget {
   final List<String> combatLog;
   final List<String> turnOrder;
+  final Map<String, int> initiativeRolls;
   final int currentTurnIndex;
   final bool isActive;
 
@@ -10,6 +11,7 @@ class CombatOverlay extends StatelessWidget {
     super.key,
     required this.combatLog,
     required this.turnOrder,
+    this.initiativeRolls = const {},
     required this.currentTurnIndex,
     required this.isActive,
   });
@@ -38,6 +40,8 @@ class CombatOverlay extends StatelessWidget {
                   const Text("⚔️ ", style: TextStyle(fontSize: 18)),
                   ...turnOrder.asMap().entries.map((e) {
                     final isCurrent = e.key == currentTurnIndex;
+                    final roll = initiativeRolls[e.value];
+                    final displayName = e.value.length > 8 ? e.value.substring(0, 8) : e.value;
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -46,12 +50,27 @@ class CombatOverlay extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                         border: isCurrent ? Border.all(color: Colors.white, width: 2) : null,
                       ),
-                      child: Text(
-                        e.value.length > 8 ? e.value.substring(0, 8) : e.value,
-                        style: TextStyle(
-                          color: isCurrent ? Colors.black : Colors.white,
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            displayName,
+                            style: TextStyle(
+                              color: isCurrent ? Colors.black : Colors.white,
+                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          if (roll != null) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              "($roll)",
+                              style: TextStyle(
+                                color: isCurrent ? Colors.black54 : Colors.white54,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     );
                   }),

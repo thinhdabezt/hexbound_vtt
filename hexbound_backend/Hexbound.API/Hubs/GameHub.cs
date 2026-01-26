@@ -71,9 +71,35 @@ public class GameHub : Hub
 
     public async Task StartCombat(List<string> participantIds)
     {
-        var state = _combatService.StartCombat(participantIds);
+        // Fetch TokenStats for all participants
+        var participants = new List<TokenStats>();
+        foreach (var id in participantIds)
+        {
+            var stats = await _gameStateService.GetTokenStats(id);
+            if (stats != null)
+            {
+                participants.Add(stats);
+            }
+            else
+            {
+                // Create default stats for tokens without stats
+                participants.Add(new TokenStats { TokenId = id, Name = id });
+            }
+        }
+        
+        // Start combat with real initiative rolls
+        var state = _combatService.StartCombat(participants);
         await _gameStateService.SaveCombatState(state);
-        await Clients.All.SendAsync("CombatStarted", state); // Client should show combat UI
+        
+        // Broadcast with initiative details
+        await Clients.All.SendAsync("CombatStarted", state);
+        
+        // Send initiative roll results to combat log
+        foreach (var (tokenId, roll) in state.InitiativeRolls)
+        {
+            var name = participants.FirstOrDefault(p => p.TokenId == tokenId)?.Name ?? tokenId;
+            await Clients.All.SendAsync("CombatLog", $"🎲 {name} rolled initiative: {roll}");
+        }
     }
 
     public async Task EndTurn()

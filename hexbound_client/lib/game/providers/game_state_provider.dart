@@ -45,6 +45,91 @@ class TokenStatsNotifier extends StateNotifier<Map<String, TokenStats>> {
   TokenStats? get(String tokenId) => state[tokenId];
 }
 
+// ===== COMBAT STATE =====
+class CombatState {
+  final List<String> turnOrder;
+  final Map<String, int> initiativeRolls;
+  final int currentTurnIndex;
+  final int roundNumber;
+  final bool isActive;
+
+  CombatState({
+    this.turnOrder = const [],
+    this.initiativeRolls = const {},
+    this.currentTurnIndex = 0,
+    this.roundNumber = 1,
+    this.isActive = false,
+  });
+
+  factory CombatState.fromJson(Map<String, dynamic> json) => CombatState(
+    turnOrder: List<String>.from(json['turnOrder'] ?? []),
+    initiativeRolls: Map<String, int>.from(
+      (json['initiativeRolls'] as Map?)?.map((k, v) => MapEntry(k.toString(), v as int)) ?? {}
+    ),
+    currentTurnIndex: json['currentTurnIndex'] ?? 0,
+    roundNumber: json['roundNumber'] ?? 1,
+    isActive: json['isActive'] ?? false,
+  );
+
+  CombatState copyWith({
+    List<String>? turnOrder,
+    Map<String, int>? initiativeRolls,
+    int? currentTurnIndex,
+    int? roundNumber,
+    bool? isActive,
+  }) => CombatState(
+    turnOrder: turnOrder ?? this.turnOrder,
+    initiativeRolls: initiativeRolls ?? this.initiativeRolls,
+    currentTurnIndex: currentTurnIndex ?? this.currentTurnIndex,
+    roundNumber: roundNumber ?? this.roundNumber,
+    isActive: isActive ?? this.isActive,
+  );
+}
+
+final combatStateProvider = StateNotifierProvider<CombatStateNotifier, CombatState>((ref) {
+  return CombatStateNotifier();
+});
+
+class CombatStateNotifier extends StateNotifier<CombatState> {
+  CombatStateNotifier() : super(CombatState());
+  
+  void setCombatState(CombatState newState) {
+    state = newState;
+  }
+  
+  void nextTurn() {
+    if (!state.isActive || state.turnOrder.isEmpty) return;
+    var nextIndex = state.currentTurnIndex + 1;
+    var nextRound = state.roundNumber;
+    if (nextIndex >= state.turnOrder.length) {
+      nextIndex = 0;
+      nextRound++;
+    }
+    state = state.copyWith(currentTurnIndex: nextIndex, roundNumber: nextRound);
+  }
+  
+  void endCombat() {
+    state = CombatState();
+  }
+}
+
+// ===== COMBAT LOG =====
+final combatLogProvider = StateNotifierProvider<CombatLogNotifier, List<String>>((ref) {
+  return CombatLogNotifier();
+});
+
+class CombatLogNotifier extends StateNotifier<List<String>> {
+  CombatLogNotifier() : super([]);
+  
+  void addLog(String message) {
+    state = [...state, message];
+  }
+  
+  void clear() {
+    state = [];
+  }
+}
+
 // ===== MAP DATA PROVIDER =====
 final mapDataProvider = StateNotifierProvider<MapDataNotifier, HexMapData>((ref) {
   return MapDataNotifier();
@@ -133,6 +218,32 @@ class SignalRService {
       }
     });
 
+    // Combat Started
+    _connection!.on("CombatStarted", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final rawData = arguments[0] as Map;
+        final state = CombatState.fromJson(Map<String, dynamic>.from(rawData));
+        ref.read(combatStateProvider.notifier).setCombatState(state);
+      }
+    });
+
+    // Combat Log
+    _connection!.on("CombatLog", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final message = arguments[0] as String;
+        ref.read(combatLogProvider.notifier).addLog(message);
+      }
+    });
+
+    // Combat State Updated (Turn changes)
+    _connection!.on("CombatStateUpdated", (arguments) {
+      if (arguments != null && arguments.isNotEmpty) {
+        final rawData = arguments[0] as Map;
+        final state = CombatState.fromJson(Map<String, dynamic>.from(rawData));
+        ref.read(combatStateProvider.notifier).setCombatState(state);
+      }
+    });
+
     try {
       await _connection!.start();
       myTokenId = "Player_${DateTime.now().millisecondsSinceEpoch % 1000}";
@@ -168,6 +279,18 @@ class SignalRService {
   Future<void> dealDamage(String tokenId, int damage) async {
     if (_connection?.state == HubConnectionState.Connected) {
       await _connection!.invoke("DealDamage", args: [tokenId, damage]);
+    }
+  }
+
+  Future<void> startCombat(List<String> participantIds) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("StartCombat", args: [participantIds]);
+    }
+  }
+
+  Future<void> endTurn() async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("EndTurn");
     }
   }
 }
