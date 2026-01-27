@@ -71,9 +71,19 @@ class DynamicPainter extends CustomPainter {
         Offset center = layout.hexToPixel(hex);
         if (!expandedRect.contains(center)) return; // Cull
         
+        final stats = tokenStats?[id];
+        final isUnconscious = stats?.isUnconscious ?? false;
+        final isDead = stats?.isDead ?? false;
+        
+        // Apply opacity for death states
+        final tokenOpacity = isDead ? 0.3 : 1.0;
+        
+        // Save canvas state for applying effects
+        canvas.save();
+        
         // Draw flag pole
         final polePaint = Paint()
-          ..color = Colors.brown[700]!
+          ..color = (isUnconscious ? Colors.grey : Colors.brown[700]!).withOpacity(tokenOpacity)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3.0;
         
@@ -82,8 +92,9 @@ class DynamicPainter extends CustomPainter {
         canvas.drawLine(poleStart, poleEnd, polePaint);
         
         // Draw flag triangle
+        final flagColor = isDead ? Colors.grey[800]! : (isUnconscious ? Colors.grey : Colors.red);
         final flagPaint = Paint()
-          ..color = Colors.red
+          ..color = flagColor.withOpacity(tokenOpacity)
           ..style = PaintingStyle.fill;
         
         final flagPath = Path()
@@ -95,15 +106,24 @@ class DynamicPainter extends CustomPainter {
         canvas.drawPath(flagPath, flagPaint);
         
         // Flag border
+        final borderColor = isDead ? Colors.grey[900]! : (isUnconscious ? Colors.grey[600]! : Colors.red[900]!);
         final flagBorder = Paint()
-          ..color = Colors.red[900]!
+          ..color = borderColor.withOpacity(tokenOpacity)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
         canvas.drawPath(flagPath, flagBorder);
         
-        // Draw HP bar if stats available
-        final stats = tokenStats?[id];
-        if (stats != null) {
+        // Draw death state icon
+        if (isDead) {
+          _drawDeathIcon(canvas, center, "💀");
+        } else if (isUnconscious) {
+          _drawDeathIcon(canvas, center, "💤");
+        }
+        
+        canvas.restore();
+        
+        // Draw HP bar if stats available (not for dead tokens)
+        if (stats != null && !isDead) {
           _drawHpBar(canvas, center, stats.currentHp, stats.maxHp);
         }
       });
@@ -141,6 +161,21 @@ class DynamicPainter extends CustomPainter {
         const Radius.circular(2),
       ),
       Paint()..color = barColor,
+    );
+  }
+
+  void _drawDeathIcon(Canvas canvas, Offset center, String emoji) {
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: emoji,
+        style: TextStyle(fontSize: layout.size.height * 0.5),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    
+    textPainter.paint(
+      canvas,
+      center - Offset(textPainter.width / 2, textPainter.height / 2),
     );
   }
 

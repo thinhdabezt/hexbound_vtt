@@ -293,5 +293,11 @@ class SignalRService {
       await _connection!.invoke("EndTurn");
     }
   }
+
+  Future<void> healToken(String tokenId, int amount) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("HealToken", args: [tokenId, amount]);
+    }
+  }
 }
 

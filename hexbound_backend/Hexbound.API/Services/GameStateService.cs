@@ -106,5 +106,73 @@ public class GameStateService
         stats.CurrentHp = Math.Max(0, stats.CurrentHp - damage);
         await SaveTokenStats(stats);
     }
+
+    /// <summary>
+    /// Apply damage with D&D 5e death handling
+    /// </summary>
+    public async Task<(TokenStats? stats, string? deathEvent)> ApplyDamageWithDeathHandling(string tokenId, int damage)
+    {
+        var stats = await GetTokenStats(tokenId);
+        if (stats == null) return (null, null);
+        
+        var previousHp = stats.CurrentHp;
+        stats.CurrentHp = Math.Max(0, stats.CurrentHp - damage);
+        
+        string? deathEvent = null;
+        
+        // Check for death conditions
+        if (stats.CurrentHp == 0 && previousHp > 0)
+        {
+            var overkill = damage - previousHp;
+            
+            // Massive damage: overkill >= MaxHp = instant death
+            if (overkill >= stats.MaxHp)
+            {
+                if (!stats.Conditions.Contains("Dead"))
+                {
+                    stats.Conditions.Add("Dead");
+                    stats.Conditions.Remove("Unconscious");
+                    deathEvent = "Dead";
+                }
+            }
+            else
+            {
+                // HP = 0 → Unconscious
+                if (!stats.Conditions.Contains("Unconscious") && !stats.Conditions.Contains("Dead"))
+                {
+                    stats.Conditions.Add("Unconscious");
+                    deathEvent = "Unconscious";
+                }
+            }
+        }
+        
+        await SaveTokenStats(stats);
+        return (stats, deathEvent);
+    }
+
+    /// <summary>
+    /// Apply healing (capped at MaxHp, removes Unconscious if healed above 0)
+    /// </summary>
+    public async Task<TokenStats?> ApplyHealing(string tokenId, int amount)
+    {
+        var stats = await GetTokenStats(tokenId);
+        if (stats == null) return null;
+        
+        // Dead tokens cannot be healed (need resurrection)
+        if (stats.Conditions.Contains("Dead")) return stats;
+        
+        var previousHp = stats.CurrentHp;
+        stats.CurrentHp = Math.Min(stats.MaxHp, stats.CurrentHp + amount);
+        
+        // Remove Unconscious if healed above 0
+        if (previousHp == 0 && stats.CurrentHp > 0)
+        {
+            stats.Conditions.Remove("Unconscious");
+        }
+        
+        await SaveTokenStats(stats);
+        return stats;
+    }
 }
+
 

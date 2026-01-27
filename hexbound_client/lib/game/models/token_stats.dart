@@ -27,6 +27,8 @@ class TokenStats {
 
   bool get isAlive => currentHp > 0;
   double get hpPercentage => maxHp > 0 ? currentHp.toDouble() / maxHp.toDouble() : 0.0;
+  bool get isUnconscious => conditions.contains("Unconscious");
+  bool get isDead => conditions.contains("Dead");
 
   factory TokenStats.fromJson(Map<String, dynamic> json) => TokenStats(
         tokenId: json['tokenId'] ?? '',

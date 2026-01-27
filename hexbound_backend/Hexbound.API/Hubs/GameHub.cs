@@ -61,10 +61,46 @@ public class GameHub : Hub
 
     public async Task DealDamage(string tokenId, int damage)
     {
-        await _gameStateService.UpdateTokenHp(tokenId, damage);
-        var stats = await _gameStateService.GetTokenStats(tokenId);
+        var (stats, deathEvent) = await _gameStateService.ApplyDamageWithDeathHandling(tokenId, damage);
+        if (stats == null) return;
+        
         await Clients.All.SendAsync("TokenStatsUpdated", stats);
-        await Clients.All.SendAsync("CombatLog", $"{stats?.Name ?? tokenId} takes {damage} damage!");
+        await Clients.All.SendAsync("CombatLog", $"💥 {stats.Name} takes {damage} damage! (HP: {stats.CurrentHp}/{stats.MaxHp})");
+        
+        // Broadcast death events
+        if (deathEvent == "Unconscious")
+        {
+            await Clients.All.SendAsync("CombatLog", $"💤 {stats.Name} falls unconscious!");
+            await Clients.All.SendAsync("TokenDeath", new { tokenId, state = "Unconscious" });
+        }
+        else if (deathEvent == "Dead")
+        {
+            await Clients.All.SendAsync("CombatLog", $"💀 {stats.Name} is killed by massive damage!");
+            await Clients.All.SendAsync("TokenDeath", new { tokenId, state = "Dead" });
+        }
+    }
+
+    public async Task HealToken(string tokenId, int amount)
+    {
+        var stats = await _gameStateService.ApplyHealing(tokenId, amount);
+        if (stats == null) return;
+        
+        await Clients.All.SendAsync("TokenStatsUpdated", stats);
+        
+        if (stats.Conditions.Contains("Dead"))
+        {
+            await Clients.All.SendAsync("CombatLog", $"⚰️ {stats.Name} is dead and cannot be healed.");
+        }
+        else
+        {
+            await Clients.All.SendAsync("CombatLog", $"💚 {stats.Name} is healed for {amount}! (HP: {stats.CurrentHp}/{stats.MaxHp})");
+            
+            // Check if revived from unconscious
+            if (stats.CurrentHp > 0 && !stats.Conditions.Contains("Unconscious"))
+            {
+                await Clients.All.SendAsync("TokenRevive", tokenId);
+            }
+        }
     }
 
     // --- Combat API ---
