@@ -143,26 +143,107 @@ public class GameHub : Hub
         var state = await _gameStateService.GetCombatState();
         if (state == null || !state.IsActive) return;
 
-        _combatService.NextTurn(state);
+        // Build stats lookup for speed reset
+        var allStats = await _gameStateService.GetAllTokenStats();
+        var statsLookup = allStats.ToDictionary(s => s.TokenId);
+        
+        _combatService.NextTurn(state, statsLookup);
         await _gameStateService.SaveCombatState(state);
-        await Clients.All.SendAsync("TurnChanged", state); // Client updates CurrentActor highlight
+        
+        // Broadcast turn change with current actor's actions
+        await Clients.All.SendAsync("TurnChanged", state);
+        
+        if (state.CurrentActor != null)
+        {
+            var currentActions = state.ActorActions.GetValueOrDefault(state.CurrentActor);
+            await Clients.All.SendAsync("TurnActionsUpdated", state.CurrentActor, currentActions);
+        }
+    }
+
+    // === Action Economy Endpoints ===
+
+    public async Task UseAction()
+    {
+        var state = await _gameStateService.GetCombatState();
+        if (state?.CurrentActor == null) return;
+
+        if (_combatService.UseAction(state))
+        {
+            await _gameStateService.SaveCombatState(state);
+            await Clients.All.SendAsync("TurnActionsUpdated", state.CurrentActor, state.CurrentActorActions);
+            await Clients.All.SendAsync("CombatLog", $"⚔️ {state.CurrentActor} uses their Action");
+        }
+        else
+        {
+            await Clients.Caller.SendAsync("CombatLog", "⚠️ No Action available!");
+        }
+    }
+
+    public async Task UseBonusAction()
+    {
+        var state = await _gameStateService.GetCombatState();
+        if (state?.CurrentActor == null) return;
+
+        if (_combatService.UseBonusAction(state))
+        {
+            await _gameStateService.SaveCombatState(state);
+            await Clients.All.SendAsync("TurnActionsUpdated", state.CurrentActor, state.CurrentActorActions);
+            await Clients.All.SendAsync("CombatLog", $"⚡ {state.CurrentActor} uses their Bonus Action");
+        }
+        else
+        {
+            await Clients.Caller.SendAsync("CombatLog", "⚠️ No Bonus Action available!");
+        }
+    }
+
+    public async Task UseMovement(int hexes)
+    {
+        var state = await _gameStateService.GetCombatState();
+        if (state?.CurrentActor == null) return;
+
+        if (_combatService.UseMovement(state, hexes))
+        {
+            await _gameStateService.SaveCombatState(state);
+            await Clients.All.SendAsync("TurnActionsUpdated", state.CurrentActor, state.CurrentActorActions);
+        }
+        else
+        {
+            await Clients.Caller.SendAsync("CombatLog", $"⚠️ Not enough movement! Need {hexes}, have {state.CurrentActorActions?.MovementRemaining ?? 0}");
+        }
     }
 
     public async Task Attack(string targetId, int attackRoll)
     {
-        // Ideally we fetch Target Stat from DB/Redis. 
-        // For Proof of Concept, let's assume AC 15 for everyone.
-        int targetAc = 15; 
+        var state = await _gameStateService.GetCombatState();
+        
+        // Validate action is available
+        if (state?.CurrentActorActions != null && state.CurrentActorActions.ActionUsed)
+        {
+            await Clients.Caller.SendAsync("CombatLog", "⚠️ No Action available for attack!");
+            return;
+        }
+        
+        // Use the action
+        if (state != null)
+        {
+            _combatService.UseAction(state);
+            await _gameStateService.SaveCombatState(state);
+            await Clients.All.SendAsync("TurnActionsUpdated", state.CurrentActor, state.CurrentActorActions);
+        }
+        
+        // Fetch target AC from stats
+        var targetStats = await _gameStateService.GetTokenStats(targetId);
+        int targetAc = targetStats?.ArmorClass ?? 15;
         
         bool isHit = _combatService.ResolveAttack(attackRoll, targetAc);
         
-        string log = isHit ? $"Attack Hit! (Roll {attackRoll} vs AC {targetAc})" : $"Attack Missed. (Roll {attackRoll} vs AC {targetAc})";
+        string log = isHit ? $"🎯 Attack Hit! (Roll {attackRoll} vs AC {targetAc})" : $"❌ Attack Missed. (Roll {attackRoll} vs AC {targetAc})";
         
         await Clients.All.SendAsync("CombatLog", log);
         
         if (isHit) {
-             // For now static damage
-             await Clients.All.SendAsync("CombatLog", $"{targetId} takes 5 damage!");
+             // For now static damage (later: weapon damage)
+             await DealDamage(targetId, 5);
         }
     }
 
@@ -179,3 +260,4 @@ public class GameHub : Hub
         }
     }
 }
+

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/turn_actions.dart';
 
 class CombatOverlay extends StatelessWidget {
   final List<String> combatLog;
@@ -6,6 +7,10 @@ class CombatOverlay extends StatelessWidget {
   final Map<String, int> initiativeRolls;
   final int currentTurnIndex;
   final bool isActive;
+  final TurnActions? currentActions;
+  final VoidCallback? onUseAction;
+  final VoidCallback? onUseBonusAction;
+  final VoidCallback? onEndTurn;
 
   const CombatOverlay({
     super.key,
@@ -14,6 +19,10 @@ class CombatOverlay extends StatelessWidget {
     this.initiativeRolls = const {},
     required this.currentTurnIndex,
     required this.isActive,
+    this.currentActions,
+    this.onUseAction,
+    this.onUseBonusAction,
+    this.onEndTurn,
   });
 
   @override
@@ -80,11 +89,73 @@ class CombatOverlay extends StatelessWidget {
           ),
         ),
 
+        // Action Bar (Bottom Center)
+        if (currentActions != null)
+          Positioned(
+            bottom: 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ActionButton(
+                      icon: "⚔️",
+                      label: "Action",
+                      isUsed: currentActions!.actionUsed,
+                      onTap: currentActions!.actionUsed ? null : onUseAction,
+                    ),
+                    const SizedBox(width: 8),
+                    _ActionButton(
+                      icon: "⚡",
+                      label: "Bonus",
+                      isUsed: currentActions!.bonusActionUsed,
+                      onTap: currentActions!.bonusActionUsed ? null : onUseBonusAction,
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: currentActions!.movementRemaining > 0 ? Colors.blue[700] : Colors.grey[700],
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text("🦶", style: TextStyle(fontSize: 16)),
+                          const SizedBox(width: 4),
+                          Text(
+                            "${currentActions!.movementRemaining}",
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    ElevatedButton(
+                      onPressed: onEndTurn,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text("End Turn"),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
         // Combat Log (Right Side)
         Positioned(
           top: 80,
           right: 16,
-          bottom: 16,
+          bottom: 80,
           width: 280,
           child: Container(
             decoration: BoxDecoration(
@@ -110,7 +181,7 @@ class CombatOverlay extends StatelessWidget {
                   child: ListView.builder(
                     padding: const EdgeInsets.all(8),
                     itemCount: combatLog.length,
-                    reverse: true, // Newest at bottom
+                    reverse: true,
                     itemBuilder: (context, index) {
                       final logIndex = combatLog.length - 1 - index;
                       return Padding(
@@ -131,3 +202,46 @@ class CombatOverlay extends StatelessWidget {
     );
   }
 }
+
+class _ActionButton extends StatelessWidget {
+  final String icon;
+  final String label;
+  final bool isUsed;
+  final VoidCallback? onTap;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.isUsed,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isUsed ? Colors.grey[700] : Colors.green[700],
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: [
+            Text(icon, style: TextStyle(fontSize: 16, color: isUsed ? Colors.grey : null)),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isUsed ? Colors.grey[400] : Colors.white,
+                fontWeight: FontWeight.bold,
+                decoration: isUsed ? TextDecoration.lineThrough : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

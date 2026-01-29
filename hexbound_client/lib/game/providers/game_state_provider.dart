@@ -4,6 +4,7 @@ import 'package:signalr_netcore/signalr_client.dart';
 import '../hex_engine/hex.dart';
 import '../models/hex_map_data.dart';
 import '../models/token_stats.dart';
+import '../models/turn_actions.dart';
 
 // ===== TOKEN PROVIDER =====
 final tokensProvider = StateNotifierProvider<TokensNotifier, Map<String, Hex>>((ref) {
@@ -130,6 +131,31 @@ class CombatLogNotifier extends StateNotifier<List<String>> {
   }
 }
 
+// ===== TURN ACTIONS PROVIDER =====
+final turnActionsProvider = StateNotifierProvider<TurnActionsNotifier, Map<String, TurnActions>>((ref) {
+  return TurnActionsNotifier();
+});
+
+class TurnActionsNotifier extends StateNotifier<Map<String, TurnActions>> {
+  TurnActionsNotifier() : super({});
+  
+  void update(String actorId, TurnActions actions) {
+    state = {...state, actorId: actions};
+  }
+  
+  void syncFromCombatState(Map<String, dynamic> actorActionsJson) {
+    final newState = <String, TurnActions>{};
+    actorActionsJson.forEach((key, value) {
+      if (value is Map) {
+        newState[key] = TurnActions.fromJson(Map<String, dynamic>.from(value));
+      }
+    });
+    state = newState;
+  }
+  
+  TurnActions? getForActor(String actorId) => state[actorId];
+}
+
 // ===== MAP DATA PROVIDER =====
 final mapDataProvider = StateNotifierProvider<MapDataNotifier, HexMapData>((ref) {
   return MapDataNotifier();
@@ -244,6 +270,18 @@ class SignalRService {
       }
     });
 
+    // Turn Actions Updated
+    _connection!.on("TurnActionsUpdated", (arguments) {
+      if (arguments != null && arguments.length >= 2) {
+        final actorId = arguments[0] as String;
+        final rawActions = arguments[1] as Map?;
+        if (rawActions != null) {
+          final actions = TurnActions.fromJson(Map<String, dynamic>.from(rawActions));
+          ref.read(turnActionsProvider.notifier).update(actorId, actions);
+        }
+      }
+    });
+
     try {
       await _connection!.start();
       myTokenId = "Player_${DateTime.now().millisecondsSinceEpoch % 1000}";
@@ -299,5 +337,30 @@ class SignalRService {
       await _connection!.invoke("HealToken", args: [tokenId, amount]);
     }
   }
+
+  Future<void> useAction() async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("UseAction");
+    }
+  }
+
+  Future<void> useBonusAction() async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("UseBonusAction");
+    }
+  }
+
+  Future<void> useMovement(int hexes) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("UseMovement", args: [hexes]);
+    }
+  }
+
+  Future<void> attack(String targetId, int attackRoll) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("Attack", args: [targetId, attackRoll]);
+    }
+  }
 }
+
 

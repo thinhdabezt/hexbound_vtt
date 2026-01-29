@@ -4,6 +4,7 @@ public class CombatState
 {
     public List<string> TurnOrder { get; set; } = new();
     public Dictionary<string, int> InitiativeRolls { get; set; } = new();
+    public Dictionary<string, TurnActions> ActorActions { get; set; } = new();
     public int CurrentTurnIndex { get; set; } = 0;
     public int RoundNumber { get; set; } = 1;
     public bool IsActive { get; set; } = false;
@@ -12,5 +13,11 @@ public class CombatState
     public string? CurrentActor => TurnOrder.Count > 0 && CurrentTurnIndex < TurnOrder.Count 
         ? TurnOrder[CurrentTurnIndex] 
         : null;
+    
+    // Helper to get current actor's actions
+    public TurnActions? CurrentActorActions => CurrentActor != null && ActorActions.ContainsKey(CurrentActor)
+        ? ActorActions[CurrentActor]
+        : null;
 }
+
 
