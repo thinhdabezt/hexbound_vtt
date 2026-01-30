@@ -9,12 +9,14 @@ public class GameHub : Hub
     private readonly DiceService _diceService;
     private readonly GameStateService _gameStateService;
     private readonly CombatService _combatService;
+    private readonly ConditionService _conditionService;
 
-    public GameHub(DiceService diceService, GameStateService gameStateService, CombatService combatService)
+    public GameHub(DiceService diceService, GameStateService gameStateService, CombatService combatService, ConditionService conditionService)
     {
         _diceService = diceService;
         _gameStateService = gameStateService;
         _combatService = combatService;
+        _conditionService = conditionService;
     }
 
     public override async Task OnConnectedAsync()
@@ -101,6 +103,49 @@ public class GameHub : Hub
                 await Clients.All.SendAsync("TokenRevive", tokenId);
             }
         }
+    }
+
+    // --- Condition API ---
+
+    public async Task AddCondition(string tokenId, string condition)
+    {
+        var stats = await _gameStateService.GetTokenStats(tokenId);
+        if (stats == null) return;
+
+        if (_conditionService.AddCondition(stats, condition))
+        {
+            await _gameStateService.SaveTokenStats(stats);
+            await Clients.All.SendAsync("TokenStatsUpdated", stats);
+            
+            var icon = _conditionService.GetConditionIcon(condition);
+            await Clients.All.SendAsync("CombatLog", $"{icon} {stats.Name} gains condition: {condition}");
+            await Clients.All.SendAsync("ConditionAdded", tokenId, condition);
+        }
+        else
+        {
+            await Clients.Caller.SendAsync("CombatLog", $"⚠️ Invalid condition: {condition}");
+        }
+    }
+
+    public async Task RemoveCondition(string tokenId, string condition)
+    {
+        var stats = await _gameStateService.GetTokenStats(tokenId);
+        if (stats == null) return;
+
+        if (_conditionService.RemoveCondition(stats, condition))
+        {
+            await _gameStateService.SaveTokenStats(stats);
+            await Clients.All.SendAsync("TokenStatsUpdated", stats);
+            
+            var icon = _conditionService.GetConditionIcon(condition);
+            await Clients.All.SendAsync("CombatLog", $"✨ {stats.Name} no longer has: {condition}");
+            await Clients.All.SendAsync("ConditionRemoved", tokenId, condition);
+        }
+    }
+
+    public async Task GetValidConditions()
+    {
+        await Clients.Caller.SendAsync("ValidConditions", ConditionService.ValidConditions, ConditionService.ConditionIcons);
     }
 
     // --- Combat API ---

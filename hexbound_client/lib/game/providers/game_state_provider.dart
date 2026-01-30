@@ -361,6 +361,19 @@ class SignalRService {
       await _connection!.invoke("Attack", args: [targetId, attackRoll]);
     }
   }
+
+  Future<void> addCondition(String tokenId, String condition) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("AddCondition", args: [tokenId, condition]);
+    }
+  }
+
+  Future<void> removeCondition(String tokenId, String condition) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("RemoveCondition", args: [tokenId, condition]);
+    }
+  }
 }
+
 
 

@@ -29,6 +29,32 @@ class TokenStats {
   double get hpPercentage => maxHp > 0 ? currentHp.toDouble() / maxHp.toDouble() : 0.0;
   bool get isUnconscious => conditions.contains("Unconscious");
   bool get isDead => conditions.contains("Dead");
+  bool get isStunned => conditions.contains("Stunned");
+  bool get isProne => conditions.contains("Prone");
+  bool get isGrappled => conditions.contains("Grappled");
+  bool get isParalyzed => conditions.contains("Paralyzed");
+  bool get canTakeTurn => !isStunned && !isParalyzed && !isUnconscious && !isDead && !conditions.contains("Petrified");
+
+  // Condition icons for display
+  static const Map<String, String> conditionIcons = {
+    "Blinded": "🙈",
+    "Charmed": "💕",
+    "Deafened": "🔇",
+    "Frightened": "😱",
+    "Grappled": "🤝",
+    "Incapacitated": "💫",
+    "Invisible": "👻",
+    "Paralyzed": "⚡",
+    "Petrified": "🗿",
+    "Poisoned": "🤢",
+    "Prone": "🔻",
+    "Restrained": "⛓️",
+    "Stunned": "😵",
+    "Unconscious": "💤",
+    "Dead": "💀",
+  };
+
+  String getConditionIcon(String condition) => conditionIcons[condition] ?? "❓";
 
   factory TokenStats.fromJson(Map<String, dynamic> json) => TokenStats(
         tokenId: json['tokenId'] ?? '',

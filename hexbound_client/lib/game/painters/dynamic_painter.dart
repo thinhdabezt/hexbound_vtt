@@ -118,6 +118,13 @@ class DynamicPainter extends CustomPainter {
           _drawDeathIcon(canvas, center, "💀");
         } else if (isUnconscious) {
           _drawDeathIcon(canvas, center, "💤");
+        } else if (stats != null && stats.conditions.isNotEmpty) {
+          // Draw condition badges (excluding death states)
+          final visibleConditions = stats.conditions
+              .where((c) => c != "Unconscious" && c != "Dead")
+              .take(3) // Max 3 badges
+              .toList();
+          _drawConditionBadges(canvas, center, visibleConditions);
         }
         
         canvas.restore();
@@ -177,6 +184,40 @@ class DynamicPainter extends CustomPainter {
       canvas,
       center - Offset(textPainter.width / 2, textPainter.height / 2),
     );
+  }
+
+  void _drawConditionBadges(Canvas canvas, Offset center, List<String> conditions) {
+    if (conditions.isEmpty) return;
+    
+    final badgeSize = layout.size.height * 0.3;
+    final startX = center.dx - (conditions.length * badgeSize) / 2;
+    final badgeY = center.dy - layout.size.height * 0.8;
+    
+    for (int i = 0; i < conditions.length; i++) {
+      final condition = conditions[i];
+      final icon = TokenStats.conditionIcons[condition] ?? "❓";
+      final badgeX = startX + i * badgeSize;
+      
+      // Draw badge background
+      final bgPaint = Paint()
+        ..color = Colors.black.withOpacity(0.7)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(badgeX + badgeSize / 2, badgeY), badgeSize / 2, bgPaint);
+      
+      // Draw icon
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: icon,
+          style: TextStyle(fontSize: badgeSize * 0.7),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      
+      textPainter.paint(
+        canvas,
+        Offset(badgeX + badgeSize / 2 - textPainter.width / 2, badgeY - textPainter.height / 2),
+      );
+    }
   }
 
   void _drawHexPoly(Canvas canvas, Hex h, Paint paint) {
