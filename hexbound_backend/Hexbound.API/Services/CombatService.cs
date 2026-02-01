@@ -133,5 +133,95 @@ public class CombatService
     {
         return Math.Max(0, currentHp - damage);
     }
+
+    // === Movement Helpers ===
+
+    /// <summary>
+    /// Calculate hex distance between two points (axial coordinates)
+    /// </summary>
+    public int HexDistance(int q1, int r1, int q2, int r2)
+    {
+        // Convert axial to cube coordinates and use cube distance
+        int s1 = -q1 - r1;
+        int s2 = -q2 - r2;
+        return (Math.Abs(q1 - q2) + Math.Abs(r1 - r2) + Math.Abs(s1 - s2)) / 2;
+    }
+
+    /// <summary>
+    /// Calculate movement cost for a path (supports difficult terrain)
+    /// </summary>
+    public int CalculateMovementCost(int fromQ, int fromR, int toQ, int toR, HashSet<(int q, int r)>? difficultTerrain = null)
+    {
+        int baseCost = HexDistance(fromQ, fromR, toQ, toR);
+        
+        // For now, simple direct cost. In future, implement A* with terrain costs
+        if (difficultTerrain != null && difficultTerrain.Contains((toQ, toR)))
+        {
+            return baseCost + 1; // Difficult terrain costs +1 extra
+        }
+        
+        return baseCost;
+    }
+
+    /// <summary>
+    /// Validate and execute combat movement
+    /// </summary>
+    public (bool success, string? error) ValidateCombatMove(
+        CombatState state, 
+        TokenStats actor,
+        int toQ, int toR,
+        HashSet<(int q, int r)>? difficultTerrain = null)
+    {
+        if (!state.IsActive)
+            return (false, "Combat is not active");
+
+        if (state.CurrentActor != actor.TokenId)
+            return (false, "Not your turn");
+
+        var actions = state.CurrentActorActions;
+        if (actions == null)
+            return (false, "No actions available");
+
+        int cost = CalculateMovementCost(actor.Q, actor.R, toQ, toR, difficultTerrain);
+        
+        if (cost > actions.MovementRemaining)
+            return (false, $"Not enough movement. Need {cost}, have {actions.MovementRemaining}");
+
+        // Deduct movement
+        actions.MovementRemaining -= cost;
+        
+        return (true, null);
+    }
+
+    /// <summary>
+    /// Check if moving from one hex to another triggers opportunity attacks
+    /// Returns list of enemy token IDs that can make opportunity attacks
+    /// </summary>
+    public List<string> CheckOpportunityAttacks(
+        int fromQ, int fromR, 
+        int toQ, int toR,
+        Dictionary<string, (int q, int r)> enemyPositions,
+        string movingTokenId)
+    {
+        var attackers = new List<string>();
+        
+        foreach (var (enemyId, pos) in enemyPositions)
+        {
+            if (enemyId == movingTokenId) continue;
+            
+            // Check if leaving an adjacent hex (threat range = 1 hex)
+            int distanceFrom = HexDistance(fromQ, fromR, pos.q, pos.r);
+            int distanceTo = HexDistance(toQ, toR, pos.q, pos.r);
+            
+            // If was adjacent (distance 1) and now leaving (distance > 1)
+            if (distanceFrom == 1 && distanceTo > 1)
+            {
+                attackers.Add(enemyId);
+            }
+        }
+        
+        return attackers;
+    }
 }
+
 

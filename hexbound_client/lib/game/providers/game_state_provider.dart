@@ -307,6 +307,13 @@ class SignalRService {
     ref.read(tokensProvider.notifier).updateToken(tokenId, Hex.axial(q, r));
   }
 
+  /// Combat-aware movement with validation
+  Future<void> moveTokenCombat(String tokenId, int q, int r) async {
+    if (_connection?.state == HubConnectionState.Connected) {
+      await _connection!.invoke("MoveTokenCombat", args: [tokenId, q, r]);
+    }
+  }
+
   Future<void> updateTokenStats(TokenStats stats) async {
     if (_connection?.state == HubConnectionState.Connected) {
       await _connection!.invoke("UpdateTokenStats", args: [stats.toJson()]);

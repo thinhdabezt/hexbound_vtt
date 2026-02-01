@@ -53,6 +53,78 @@ public class GameHub : Hub
         await Clients.All.SendAsync("TokenMoved", tokenId, q, r);
     }
 
+    /// <summary>
+    /// Combat-aware movement with validation, cost calculation, and opportunity attacks
+    /// </summary>
+    public async Task MoveTokenCombat(string tokenId, int q, int r)
+    {
+        var state = await _gameStateService.GetCombatState();
+        var actor = await _gameStateService.GetTokenStats(tokenId);
+        
+        if (actor == null)
+        {
+            await Clients.Caller.SendAsync("CombatLog", "⚠️ Token not found");
+            return;
+        }
+
+        // If combat is not active, use regular movement
+        if (state == null || !state.IsActive)
+        {
+            await MoveToken(tokenId, q, r);
+            return;
+        }
+
+        // Validate combat movement
+        var (success, error) = _combatService.ValidateCombatMove(state, actor, q, r);
+        if (!success)
+        {
+            await Clients.Caller.SendAsync("CombatLog", $"⚠️ {error}");
+            await Clients.Caller.SendAsync("MovementBlocked", tokenId, error);
+            return;
+        }
+
+        // Check for opportunity attacks
+        var allTokens = await _gameStateService.GetGameState();
+        var enemyPositions = allTokens
+            .Where(kv => kv.Key != tokenId)
+            .ToDictionary(kv => kv.Key, kv => (kv.Value.q, kv.Value.r));
+        
+        var oaAttackers = _combatService.CheckOpportunityAttacks(actor.Q, actor.R, q, r, enemyPositions, tokenId);
+        
+        foreach (var attackerId in oaAttackers)
+        {
+            var attackerStats = await _gameStateService.GetTokenStats(attackerId);
+            var attackerName = attackerStats?.Name ?? attackerId;
+            await Clients.All.SendAsync("CombatLog", $"⚔️ {attackerName} makes an opportunity attack against {actor.Name}!");
+            await Clients.All.SendAsync("OpportunityAttack", attackerId, tokenId);
+            
+            // Use attacker's reaction
+            if (state.ActorActions.ContainsKey(attackerId))
+            {
+                _combatService.UseReaction(state, attackerId);
+            }
+        }
+
+        // Update position
+        await _gameStateService.UpdateTokenPosition(tokenId, q, r);
+        
+        // Update TokenStats position as well
+        actor.Q = q;
+        actor.R = r;
+        await _gameStateService.SaveTokenStats(actor);
+        
+        // Save combat state (movement was deducted)
+        await _gameStateService.SaveCombatState(state);
+        
+        // Broadcast movement
+        await Clients.All.SendAsync("TokenMoved", tokenId, q, r);
+        
+        // Broadcast updated TurnActions
+        var currentActions = state.CurrentActorActions;
+        await Clients.All.SendAsync("TurnActionsUpdated", state.CurrentActor, currentActions);
+        await Clients.All.SendAsync("CombatLog", $"🦶 {actor.Name} moves ({currentActions?.MovementRemaining ?? 0} movement remaining)");
+    }
+
     // --- Token Stats API ---
     
     public async Task UpdateTokenStats(TokenStats stats)

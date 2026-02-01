@@ -13,6 +13,7 @@ class DynamicPainter extends CustomPainter {
   final List<Hex>? path;
   final Map<String, Hex>? tokens;
   final Map<String, TokenStats>? tokenStats;
+  final Set<Hex>? movementRange; // Hexes reachable with remaining movement
 
   DynamicPainter({
     required this.layout,
@@ -21,11 +22,32 @@ class DynamicPainter extends CustomPainter {
     this.path,
     this.tokens,
     this.tokenStats,
+    this.movementRange,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final expandedRect = visibleRect.inflate(50); // Small margin
+
+    // Draw Movement Range (reachable hexes in combat)
+    if (movementRange != null && movementRange!.isNotEmpty) {
+      final Paint rangePaint = Paint()
+        ..color = Colors.cyan.withOpacity(0.25)
+        ..style = PaintingStyle.fill;
+      
+      final Paint rangeOutline = Paint()
+        ..color = Colors.cyan.withOpacity(0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+
+      for (var h in movementRange!) {
+        final center = layout.hexToPixel(h);
+        if (!expandedRect.contains(center)) continue;
+        
+        _drawHexPoly(canvas, h, rangePaint);
+        _drawHexPoly(canvas, h, rangeOutline);
+      }
+    }
 
     // Draw Path Highlight (filter to visible)
     if (path != null && path!.isNotEmpty) {
@@ -253,6 +275,7 @@ class DynamicPainter extends CustomPainter {
         || selectedHex != oldDelegate.selectedHex 
         || path != oldDelegate.path 
         || tokens != oldDelegate.tokens
-        || tokenStats != oldDelegate.tokenStats;
+        || tokenStats != oldDelegate.tokenStats
+        || movementRange != oldDelegate.movementRange;
   }
 }
